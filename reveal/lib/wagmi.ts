@@ -19,7 +19,7 @@ export { abstract };
 
 export const wagmiConfig = getDefaultConfig({
   appName:   'Reveal',
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
+  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'placeholder',
   chains:    [mainnet, base, abstract],
   ssr:       true,
 });

@@ -1,3 +1,5 @@
+'use client';
+
 import { AdminPanel } from '@/components/AdminPanel';
 import Link from 'next/link';
 
