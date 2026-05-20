@@ -5,6 +5,7 @@ module.exports = {
     config.resolve.alias = {
       ...config.resolve.alias,
       '@react-native-async-storage/async-storage': require.resolve('./lib/empty.js'),
+      'pino-pretty': require.resolve('./lib/empty.js'),
     };
     return config;
   },
