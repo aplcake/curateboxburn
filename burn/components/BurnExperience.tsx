@@ -17,6 +17,18 @@ const VacuumBurnRoomExperience = dynamic(
   { ssr: false, loading: () => <RoomLoader /> },
 );
 
+
+// ── WebGL detection ───────────────────────────────────────────────────────
+function checkWebGL(): 'ok' | 'unavailable' {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    return ctx ? 'ok' : 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
 // ── Contract config ───────────────────────────────────────────────────────
 const TOKEN    = '0x04619852f38ebec22bb94ef36b99351db9900194' as const;
 const TOKEN_ID = BigInt(3);
@@ -73,6 +85,7 @@ export function BurnExperience() {
   const [txHash,      setTxHash]      = useState<`0x${string}` | undefined>();
   const [activeTier,  setActiveTier]  = useState<1 | 2 | null>(null);
   const [errorMsg,    setErrorMsg]    = useState('');
+  const [webgl,       setWebgl]       = useState<'ok' | 'unavailable' | 'checking'>('checking');
 
   // Token balance
   const { data: balance } = useReadContract({
@@ -81,6 +94,8 @@ export function BurnExperience() {
     args: address ? [address, TOKEN_ID] : undefined,
     query: { enabled: !!address, refetchInterval: 10_000 },
   });
+
+  useEffect(() => { setWebgl(checkWebGL()); }, []);
 
   const fetchStatus = useCallback(async () => {
     try { setStatus(await getStatus()); } catch {}
@@ -166,6 +181,8 @@ export function BurnExperience() {
     setActiveTier(null);
     setErrorMsg('');
   }, []);
+
+  if (webgl === 'unavailable') return <WebGLError />;
 
   const soldOutItemIds = buildSoldOutIds(status, walletBurns);
   const isProcessing   = phase === 'pending' || phase === 'confirming' || phase === 'recording';
@@ -258,6 +275,26 @@ function RoomLoader() {
   return (
     <div className="fixed inset-0 bg-[#aec9bf] flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-[#17121f]/30 border-t-[#17121f] rounded-full animate-spin" />
+    </div>
+  );
+}
+
+function WebGLError() {
+  return (
+    <div className="fixed inset-0 bg-[#aec9bf] flex items-center justify-center p-6">
+      <div className="max-w-sm w-full bg-[#d4dde0] border-4 border-[#17121f] p-6 shadow-[4px_4px_0_#17121f] text-center">
+        <p className="font-bold text-[#17121f] text-lg mb-2">WebGL Unavailable</p>
+        <p className="text-[#17121f]/70 text-sm mb-4">
+          Your browser can&apos;t render the burn room. This is usually a graphics driver issue.
+        </p>
+        <div className="text-left text-xs text-[#17121f]/60 space-y-2 mb-4 bg-[#17121f]/5 p-3">
+          <p className="font-semibold text-[#17121f]/80">Fix for Chrome on Windows:</p>
+          <p>1. Go to <code className="bg-[#17121f]/10 px-1">chrome://flags/#use-angle</code></p>
+          <p>2. Change <strong>D3D9</strong> → <strong>D3D11</strong></p>
+          <p>3. Relaunch Chrome</p>
+        </div>
+        <p className="text-[#17121f]/50 text-xs">Or try Firefox / Edge as an alternative.</p>
+      </div>
     </div>
   );
 }
