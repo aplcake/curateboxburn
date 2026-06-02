@@ -8293,8 +8293,9 @@ export function VacuumBurnRoomExperience({
   const [burnedWalletBoxCount, setBurnedWalletBoxCount] = useState(0)
   const [runCompletedBurnCount, setRunCompletedBurnCount] = useState(0)
   const [runNonce, setRunNonce] = useState(0)
-  const walletConnected = devWalletConnectedOverride ?? controlledWalletConnected ?? demoWalletConnected
-  const effectiveAvailableBoxCount = devAvailableBoxCountOverride ?? controlledAvailableBoxCount
+  const fullDevMode = devControlsEnabled
+  const walletConnected = fullDevMode ? true : devWalletConnectedOverride ?? controlledWalletConnected ?? demoWalletConnected
+  const effectiveAvailableBoxCount = fullDevMode ? devAvailableBoxCountOverride ?? DEMO_WALLET_BOX_COUNT : devAvailableBoxCountOverride ?? controlledAvailableBoxCount
   const controlledVisibleBoxCount =
     effectiveAvailableBoxCount === undefined
       ? DEMO_WALLET_BOX_COUNT
@@ -8302,7 +8303,9 @@ export function VacuumBurnRoomExperience({
   const externalHiddenWalletBoxCount =
     effectiveAvailableBoxCount === undefined ? 0 : DEMO_WALLET_BOX_COUNT - controlledVisibleBoxCount
   const committedHiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, externalHiddenWalletBoxCount + burnedWalletBoxCount)
-  const soldOutItemIds = controlledSoldOutItemIds ?? (devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : [])
+  const soldOutItemIds = fullDevMode
+    ? devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : []
+    : controlledSoldOutItemIds ?? (devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : [])
   const hiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, committedHiddenWalletBoxCount + runCompletedBurnCount)
   const availableWalletBoxCount = Math.max(0, DEMO_WALLET_BOX_COUNT - hiddenWalletBoxCount)
 
@@ -8331,10 +8334,12 @@ export function VacuumBurnRoomExperience({
   function startBurnRun(item: BurnCatalogItem, { ignoreAvailability = false }: { ignoreAvailability?: boolean } = {}) {
     const count = item.boxCost
     const remainingBoxes = Math.max(0, availableWalletBoxCount)
-    if (count <= 0 || (!ignoreAvailability && count > remainingBoxes)) return
+    const forceAnimationOnly = fullDevMode || ignoreAvailability
+    if (count <= 0 || (!forceAnimationOnly && count > remainingBoxes)) return
 
     const targetCount = Math.min(DEMO_WALLET_BOX_COUNT, count)
     pendingBurnItemRef.current = item
+    pendingDevRunRef.current = forceAnimationOnly
     activeBoxIndexRef.current = committedHiddenWalletBoxCount
     carryoverSequencesRef.current = []
     runtime.current.swallowCycles = 0
