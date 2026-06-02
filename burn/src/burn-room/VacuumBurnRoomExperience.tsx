@@ -8154,6 +8154,8 @@ export function VacuumBurnRoomExperience({
           maxDistance={22}
           minPolarAngle={0.25}
           maxPolarAngle={Math.PI * 0.58}
+          minAzimuthAngle={-0.5}
+          maxAzimuthAngle={0.5}
         />
       </Canvas>
       {showDevSoldOutSwitch ? (
