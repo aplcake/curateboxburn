@@ -3040,7 +3040,7 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const tagStatus = burn1Open ? 'OPEN' : 'CLOSED'
 
   return (
-    <group position={[ROOM_CENTER_X + 0.18, 1.48, wallFaceZ + 0.092]} renderOrder={20}>
+    <group position={[ROOM_CENTER_X + 0.18, 1.72, wallFaceZ + 0.092]} renderOrder={20}>
       <mesh position={[0.09, -0.07, -0.045]} scale={[2.62, 1.08, 0.026]}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryShadowMaterial()}
@@ -4174,7 +4174,6 @@ function ToonRoomShell() {
       <MuseumSideWallArt wallFaceX={rightWallFaceX} side="right" z={ROOM_CENTER_Z - 0.68} />
       <MuseumWallAccessories wallFaceZ={wallFaceZ} />
       <McmFloorPlant position={[ROOM_LEFT_X + 0.62, ROOM_FLOOR_Y + 0.02, ROOM_FRONT_Z - 0.92]} flip={1} />
-      <McmFloorPlant position={[ROOM_RIGHT_X - 0.72, ROOM_FLOOR_Y + 0.02, ROOM_FRONT_Z - 1.12]} flip={-1} />
 
       <mesh position={[ROOM_CENTER_X, ROOM_FLOOR_Y + 0.015, ROOM_BACK_Z + 0.055]} scale={[roomWidth - 0.1, 0.035, 0.035]}>
         <boxGeometry args={[1, 1, 1]} />
