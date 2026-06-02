@@ -8153,7 +8153,7 @@ export function VacuumBurnRoomExperience({
           minDistance={2.8}
           maxDistance={22}
           minPolarAngle={0.25}
-          maxPolarAngle={Math.PI * 0.74}
+          maxPolarAngle={Math.PI * 0.58}
         />
       </Canvas>
       {showDevSoldOutSwitch ? (

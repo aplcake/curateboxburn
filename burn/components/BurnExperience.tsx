@@ -5,7 +5,7 @@ import dynamic               from 'next/dynamic';
 import { useConnectModal }   from '@rainbow-me/rainbowkit';
 import {
   useAccount, useReadContract, useWriteContract,
-  useWaitForTransactionReceipt, useSwitchChain,
+  useWaitForTransactionReceipt, useSwitchChain, useDisconnect,
 } from 'wagmi';
 import { base }              from 'wagmi/chains';
 import { getStatus, recordBurn, getWalletBurns, type BurnStatus } from '@/lib/api';
@@ -77,6 +77,7 @@ function buildSoldOutIds(
 export function BurnExperience() {
   const { address, chainId } = useAccount();
   const { switchChain }      = useSwitchChain();
+  const { disconnect }       = useDisconnect();
   const { openConnectModal } = useConnectModal();
 
   const [status,      setStatus]      = useState<BurnStatus | null>(null);
@@ -260,6 +261,50 @@ export function BurnExperience() {
           </div>
         </div>
       )}
+
+      {/* Wallet overlay — top right, DOM-based for full wallet management */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col items-end gap-2">
+        {!address ? (
+          <button
+            onClick={openConnectModal ?? (() => {})}
+            className="bg-[#17121f] border-2 border-[#d6b55b] text-[#d6b55b] text-xs
+                       font-mono tracking-widest px-4 py-2 hover:bg-[#d6b55b] hover:text-[#17121f]
+                       transition-all shadow-[2px_2px_0_#17121f]"
+          >
+            CONNECT WALLET
+          </button>
+        ) : (
+          <div className="flex flex-col items-end gap-1">
+            <div className="bg-[#17121f]/80 border border-[#d6b55b]/40 backdrop-blur-sm
+                           text-[#d6b55b] text-[10px] font-mono tracking-wider px-3 py-1.5">
+              {address.slice(0,6)}…{address.slice(-4)}
+              {chainId !== base.id && (
+                <span className="ml-2 text-red-400">wrong network</span>
+              )}
+            </div>
+            <div className="flex gap-1">
+              {chainId !== base.id && (
+                <button
+                  onClick={() => switchChain({ chainId: base.id })}
+                  className="bg-[#17121f]/80 border border-orange-400/60 text-orange-400
+                             text-[9px] font-mono tracking-widest px-2 py-1
+                             hover:bg-orange-400 hover:text-[#17121f] transition-all"
+                >
+                  SWITCH TO BASE
+                </button>
+              )}
+              <button
+                onClick={() => disconnect()}
+                className="bg-[#17121f]/80 border border-white/20 text-white/40
+                           text-[9px] font-mono tracking-widest px-2 py-1
+                           hover:border-red-400/60 hover:text-red-400 transition-all"
+              >
+                DISCONNECT
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Discreet admin link */}
       <a href="/admin"
