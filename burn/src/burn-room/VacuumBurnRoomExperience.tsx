@@ -3087,7 +3087,7 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   return (
     <group position={[x, y, z]}>
       {/* Drop shadow — renderOrder 4 so cursor (95+) always on top */}
-      <mesh position={[0.07, -0.06, -0.02]} scale={[1.88, 0.92, 0.014]} renderOrder={4}>
+      <mesh position={[0.07, -0.06, -0.02]} scale={[1.88, 0.92, 0.014]} renderOrder={-5}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryShadowMaterial()}
       </mesh>
@@ -3097,21 +3097,22 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
         scale={[1.72, 0.82, 0.048]}
         outlineWidth={0.02}
         outlineColor="#17121f"
+        renderOrder={-5}
         geometry={<boxGeometry args={[1, 1, 1]} />}
         material={galleryFrameMaterial()}
       />
       {/* Walnut inner backing */}
-      <mesh position={[0, 0, 0.026]} scale={[1.54, 0.65, 0.016]} renderOrder={5}>
+      <mesh position={[0, 0, 0.026]} scale={[1.54, 0.65, 0.016]} renderOrder={-5}>
         <boxGeometry args={[1, 1, 1]} />
         {mcmPanelWalnutMaterial()}
       </mesh>
       {/* Cream content panel */}
-      <mesh position={[0, 0, 0.036]} scale={[1.44, 0.58, 0.014]} renderOrder={6}>
+      <mesh position={[0, 0, 0.036]} scale={[1.44, 0.58, 0.014]} renderOrder={-5}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryCreamMaterial()}
       </mesh>
       {/* Counter texture */}
-      <mesh position={[0, 0, 0.058]} renderOrder={7}>
+      <mesh position={[0, 0, 0.058]} renderOrder={-5}>
         <planeGeometry args={[1.38, 0.55]} />
         <meshBasicMaterial map={texture} transparent toneMapped={false} depthWrite={false} />
       </mesh>
@@ -3119,19 +3120,19 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
       {([-0.74, 0.74] as const).map((bx) =>
         ([-0.36, 0.36] as const).map((by) => (
           <mesh key={`${bx}-${by}`} position={[bx, by, 0.072]}
-                rotation={[Math.PI / 2, 0, 0]} scale={[0.028, 0.028, 0.01]} renderOrder={8}>
+                rotation={[Math.PI / 2, 0, 0]} scale={[0.028, 0.028, 0.01]} renderOrder={-5}>
             <cylinderGeometry args={[1, 1, 1, 8]} />
             {mcmPanelBrassMaterial()}
           </mesh>
         ))
       )}
       {/* Top brass rail */}
-      <mesh position={[0, 0.385, 0.072]} scale={[1.52, 0.014, 0.01]} renderOrder={8}>
+      <mesh position={[0, 0.385, 0.072]} scale={[1.52, 0.014, 0.01]} renderOrder={-5}>
         <boxGeometry args={[1, 1, 1]} />
         {mcmPanelBrassMaterial()}
       </mesh>
       {/* Bottom brass rail */}
-      <mesh position={[0, -0.385, 0.072]} scale={[1.52, 0.014, 0.01]} renderOrder={8}>
+      <mesh position={[0, -0.385, 0.072]} scale={[1.52, 0.014, 0.01]} renderOrder={-5}>
         <boxGeometry args={[1, 1, 1]} />
         {mcmPanelBrassMaterial()}
       </mesh>
