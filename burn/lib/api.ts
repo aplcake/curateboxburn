@@ -14,6 +14,14 @@ export const getStatus = async (): Promise<BurnStatus> => {
   return r.json();
 };
 
+export type WalletBurns = { burnedTier1: boolean; burnedTier2: boolean };
+
+export const getWalletBurns = async (address: string): Promise<WalletBurns> => {
+  const r = await fetch(`${API}/burns/wallet/${address}`);
+  if (!r.ok) return { burnedTier1: false, burnedTier2: false };
+  return r.json();
+};
+
 export const recordBurn = async (txHash: string, tier: 1 | 2) => {
   const r = await fetch(`${API}/burns`, {
     method:  'POST',
@@ -25,7 +33,6 @@ export const recordBurn = async (txHash: string, tier: 1 | 2) => {
   return data;
 };
 
-// Admin calls go through our own Next.js API routes (keeps ADMIN_API_KEY server-side)
 export const adminAction = async (action: 'close' | 'open') => {
   const r = await fetch(`/api/admin/burn1/${action}`, { method: 'POST' });
   const data = await r.json();

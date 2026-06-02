@@ -99,6 +99,16 @@ const sendDiscord = async (wallet, tier, txHash, burn2Remaining) => {
 // Public: burn counts / open-state
 app.get('/status', (_req, res) => res.json(getBurnStatus()));
 
+// Public: check what a specific wallet has already burned
+app.get('/burns/wallet/:address', (req, res) => {
+  const address = req.params.address.toLowerCase();
+  const burns = db.prepare('SELECT tier FROM burns WHERE wallet = ?').all(address);
+  res.json({
+    burnedTier1: burns.some(b => b.tier === 1),
+    burnedTier2: burns.some(b => b.tier === 2),
+  });
+});
+
 // Public: submit a confirmed burn for recording
 app.post('/burns', async (req, res) => {
   const { txHash, tier } = req.body;

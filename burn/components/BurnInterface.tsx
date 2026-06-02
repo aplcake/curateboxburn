@@ -7,12 +7,11 @@ import {
   useWaitForTransactionReceipt, useSwitchChain,
 } from 'wagmi';
 import { base }        from 'wagmi/chains';
-import { getStatus, recordBurn, type BurnStatus } from '@/lib/api';
+import { getStatus, recordBurn, getWalletBurns, type BurnStatus, type WalletBurns } from '@/lib/api';
 
-// ─── Contract ───────────────────────────────────────────────────────────────
-const TOKEN   = '0x04619852f38ebec22bb94ef36b99351db9900194' as const;
+const TOKEN    = '0x04619852f38ebec22bb94ef36b99351db9900194' as const;
 const TOKEN_ID = BigInt(3);
-const DEAD    = '0x000000000000000000000000000000000000dEaD' as const;
+const DEAD     = '0x000000000000000000000000000000000000dEaD' as const;
 
 const ERC1155_ABI = [
   {
@@ -33,21 +32,20 @@ const ERC1155_ABI = [
   },
 ] as const;
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
 type Phase = 'idle' | 'pending' | 'confirming' | 'recording' | 'done' | 'error';
 
 export function BurnInterface() {
   const { address, chainId } = useAccount();
   const { switchChain }      = useSwitchChain();
 
-  const [status,    setStatus]    = useState<BurnStatus | null>(null);
-  const [phase,     setPhase]     = useState<Phase>('idle');
-  const [txHash,    setTxHash]    = useState<`0x${string}` | undefined>();
-  const [activeTier,setActiveTier]= useState<1 | 2 | null>(null);
-  const [message,   setMessage]   = useState('');
-  const [lastWallet,setLastWallet]= useState('');
+  const [status,      setStatus]      = useState<BurnStatus | null>(null);
+  const [walletBurns, setWalletBurns] = useState<WalletBurns | null>(null);
+  const [phase,       setPhase]       = useState<Phase>('idle');
+  const [txHash,      setTxHash]      = useState<`0x${string}` | undefined>();
+  const [activeTier,  setActiveTier]  = useState<1 | 2 | null>(null);
+  const [message,     setMessage]     = useState('');
+  const [lastWallet,  setLastWallet]  = useState('');
 
-  // Token balance
   const { data: balance } = useReadContract({
     address: TOKEN, abi: ERC1155_ABI,
     functionName: 'balanceOf',
@@ -56,13 +54,26 @@ export function BurnInterface() {
   });
   const bal = balance ? Number(balance) : 0;
 
-  // Fetch public status
   const fetchStatus = async () => {
     try { setStatus(await getStatus()); } catch {}
   };
-  useEffect(() => { fetchStatus(); const id = setInterval(fetchStatus, 15_000); return () => clearInterval(id); }, []);
 
-  // Write contract
+  const fetchWalletBurns = async (addr: string) => {
+    try { setWalletBurns(await getWalletBurns(addr)); } catch {}
+  };
+
+  useEffect(() => {
+    fetchStatus();
+    const id = setInterval(fetchStatus, 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Fetch wallet-specific burn history whenever address changes
+  useEffect(() => {
+    if (address) fetchWalletBurns(address);
+    else setWalletBurns(null);
+  }, [address]);
+
   const { writeContract, isPending: isWalletPending } = useWriteContract({
     mutation: {
       onSuccess: (hash) => { setTxHash(hash); setPhase('confirming'); },
@@ -70,13 +81,11 @@ export function BurnInterface() {
     },
   });
 
-  // Wait for confirmation
   const { isSuccess: txConfirmed, isError: txFailed } = useWaitForTransactionReceipt({
-    hash: txHash,
+    hash:  txHash,
     query: { enabled: !!txHash && phase === 'confirming' },
   });
 
-  // Once confirmed on-chain → call Railway API
   useEffect(() => {
     if (!txConfirmed || !txHash || !activeTier) return;
     setPhase('recording');
@@ -87,6 +96,8 @@ export function BurnInterface() {
         setLastWallet(res.wallet);
         setMessage('');
         fetchStatus();
+        // Refresh wallet burn state so button hides immediately
+        if (address) fetchWalletBurns(address);
       })
       .catch((err) => {
         setPhase('error');
@@ -117,26 +128,28 @@ export function BurnInterface() {
 
   const reset = () => { setPhase('idle'); setTxHash(undefined); setActiveTier(null); setMessage(''); };
 
-  const wrongChain    = !!address && chainId !== base.id;
-  const burn2Slots    = status ? 5 - status.burn2Count : 5;
-  const burn2Avail    = !!status?.burn2Open;
-  const burn1Avail    = !!status?.burn1Open;
-  const isProcessing  = ['pending','confirming','recording'].includes(phase);
+  const wrongChain   = !!address && chainId !== base.id;
+  const burn2Slots   = status ? 5 - status.burn2Count : 5;
+  const burn2Avail   = !!status?.burn2Open;
+  const burn1Avail   = !!status?.burn1Open;
+
+  // Per-wallet: hide burn ×2 if this wallet already burned ×2
+  const walletUsedBurn2 = walletBurns?.burnedTier2 === true;
+  const showBurn2       = !walletUsedBurn2 && burn2Avail;
+
+  const isProcessing = ['pending','confirming','recording'].includes(phase);
 
   return (
     <div className="flex flex-col items-center gap-8 w-full max-w-lg mx-auto">
 
-      {/* Wallet */}
       <ConnectButton showBalance={false} chainStatus="none" />
 
-      {/* Wrong chain */}
       {wrongChain && (
         <p className="text-burn text-sm tracking-wider">
           ⚠ Switch to <strong>Base</strong> to burn
         </p>
       )}
 
-      {/* Status bar */}
       {status && (
         <div className="w-full grid grid-cols-3 gap-3 text-center text-xs tracking-widest text-white/50">
           <div className="stat-box">
@@ -154,30 +167,48 @@ export function BurnInterface() {
         </div>
       )}
 
-      {/* Balance */}
       {address && (
         <p className="text-white/40 text-xs tracking-widest">
           YOUR BALANCE: <span className="text-white">{bal}</span> TOKEN{bal !== 1 ? 'S' : ''}
+          {walletUsedBurn2 && (
+            <span className="ml-3 text-white/25">(×2 already burned)</span>
+          )}
         </p>
       )}
 
-      {/* ── Burn buttons ── */}
       {phase === 'idle' && (
         <div className="flex flex-col gap-4 w-full">
-          {/* Burn 2 */}
-          <div className="flex flex-col gap-2">
-            <button
-              className="btn-burn-2 w-full"
-              disabled={!address || wrongChain || !burn2Avail || bal < 2 || isProcessing}
-              onClick={() => doBurn(2)}
-            >
-              🔥 BURN ×2
-            </button>
-            {!burn2Avail
-              ? <p className="text-center text-xs text-white/30 tracking-widest">CLOSED — ALL 5 SLOTS FILLED</p>
-              : <p className="text-center text-xs text-white/30 tracking-widest">{burn2Slots} OF 5 SLOTS REMAINING</p>
-            }
-          </div>
+
+          {/* Burn 2 — hidden if wallet already used it */}
+          {showBurn2 && (
+            <div className="flex flex-col gap-2">
+              <button
+                className="btn-burn-2 w-full"
+                disabled={!address || wrongChain || bal < 2 || isProcessing}
+                onClick={() => doBurn(2)}
+              >
+                🔥 BURN ×2
+              </button>
+              <p className="text-center text-xs text-white/30 tracking-widest">
+                {burn2Slots} OF 5 SLOTS REMAINING
+              </p>
+            </div>
+          )}
+
+          {/* Burn 2 closed globally */}
+          {!burn2Avail && !walletUsedBurn2 && (
+            <div className="flex flex-col gap-2">
+              <button className="btn-burn-2 w-full" disabled>🔥 BURN ×2</button>
+              <p className="text-center text-xs text-white/30 tracking-widest">CLOSED — ALL 5 SLOTS FILLED</p>
+            </div>
+          )}
+
+          {/* Burn 2 — wallet already used theirs */}
+          {walletUsedBurn2 && (
+            <div className="py-4 border border-white/5 text-center text-xs text-white/20 tracking-widest">
+              ✓ YOU HAVE ALREADY BURNED ×2
+            </div>
+          )}
 
           {/* Burn 1 */}
           <div className="flex flex-col gap-2">
@@ -199,7 +230,6 @@ export function BurnInterface() {
         </div>
       )}
 
-      {/* ── Processing ── */}
       {isProcessing && (
         <div className="flex flex-col items-center gap-4 w-full">
           <div className="w-10 h-10 border-2 border-burn border-t-transparent rounded-full animate-spin" />
@@ -209,18 +239,14 @@ export function BurnInterface() {
             {phase === 'recording'  && 'RECORDING BURN…'}
           </p>
           {txHash && (
-            <a
-              href={`https://basescan.org/tx/${txHash}`}
-              target="_blank" rel="noreferrer"
-              className="text-xs text-burn/70 underline tracking-wider"
-            >
+            <a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noreferrer"
+               className="text-xs text-burn/70 underline tracking-wider">
               view on basescan ↗
             </a>
           )}
         </div>
       )}
 
-      {/* ── Done ── */}
       {phase === 'done' && (
         <div className="flex flex-col items-center gap-4 text-center w-full border border-burn/40 p-6 rounded">
           <div className="text-4xl">🔥</div>
@@ -238,7 +264,6 @@ export function BurnInterface() {
         </div>
       )}
 
-      {/* ── Error ── */}
       {phase === 'error' && (
         <div className="flex flex-col items-center gap-3 text-center w-full border border-red-900/50 p-5 rounded">
           <p className="text-red-400 text-sm tracking-wider">ERROR</p>

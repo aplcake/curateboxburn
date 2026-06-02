@@ -167,7 +167,21 @@ export default function RoulettePage() {
     if (allPrizes.length < 3)      { alert('Add at least 3 prizes for this tier to make the wheel look good!'); return; }
 
     const winner   = availBurners[Math.floor(Math.random() * availBurners.length)];
-    const prize    = availPrizes[Math.floor(Math.random() * availPrizes.length)];
+
+    // For tier 1: exclude collections this wallet has already won
+    let prizePool = availPrizes;
+    if (rollTier === 1) {
+      const wonContracts = new Set(
+        stateRef.current.results
+          .filter(r => r.wallet === winner.wallet)
+          .map(r => r.prize.contract.toLowerCase())
+      );
+      const nodupes = availPrizes.filter(p => !wonContracts.has(p.contract.toLowerCase()));
+      // Fall back to full pool only if literally every remaining prize is a dupe
+      prizePool = nodupes.length > 0 ? nodupes : availPrizes;
+    }
+
+    const prize    = prizePool[Math.floor(Math.random() * prizePool.length)];
     const newStrip = buildStrip(allPrizes, prize);
 
     setStrip(newStrip);
