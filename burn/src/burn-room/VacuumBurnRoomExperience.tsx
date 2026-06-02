@@ -2983,13 +2983,17 @@ function McmStandingLamp({
 
 
 function getDisplayTextCharacterWidth(character: string, size: number) {
-  if (character === ' ') return size * 0.42
-  if (character === '/') return size * 0.42
-  if (character === 'I') return size * 0.36
-  if (character === 'M' || character === 'W') return size * 0.82
-  if (/\d/.test(character)) return size * 0.64
+  const fontResolution = helvetikerBold.resolution || 1000
+  const glyph = helvetikerBold.glyphs?.[character]
 
-  return size * 0.68
+  if (glyph?.ha) return (glyph.ha / fontResolution) * size
+  if (character === ' ') return size * 0.52
+  if (character === '/') return size * 0.48
+  if (character === 'I') return size * 0.4
+  if (character === 'M' || character === 'W') return size * 0.92
+  if (/\d/.test(character)) return size * 0.68
+
+  return size * 0.74
 }
 
 function DisplayText3D({
@@ -2999,7 +3003,7 @@ function DisplayText3D({
   color,
   align = 'left',
   depth = 0.038,
-  letterSpacing = size * 0.08,
+  letterSpacing = size * 0.2,
   shadowColor = '#6f6258',
 }: {
   text: string
