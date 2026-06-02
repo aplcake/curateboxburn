@@ -2,7 +2,7 @@
 
 import { OrbitControls, RoundedBox } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import React, { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { OutlineMesh } from '../render/OutlineMesh'
@@ -96,7 +96,15 @@ export type VacuumBurnRoomExperienceProps = {
   showDevSoldOutSwitch?: boolean
   onConnectWallet?: () => void | Promise<void>
   onBurnRequested?: (request: BurnRoomBurnRequest) => void | Promise<void>
+  burn2Remaining?: number
+  burn1Open?: boolean
 }
+
+// Context so BurnCounterPlaque can read status without prop-drilling through ToonRoomShell
+const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean }>({
+  burn2Remaining: 5,
+  burn1Open: true,
+})
 const DEFAULT_BURN_CATALOG_ITEM_ID: BurnCatalogItemId = BURN_CATALOG_ITEMS[0].id
 function getBurnCatalogItem(itemId: BurnCatalogItemId) {
   return BURN_CATALOG_ITEMS.find((item) => item.id === itemId) ?? BURN_CATALOG_ITEMS[0]
@@ -2970,13 +2978,126 @@ function McmStandingLamp({
   )
 }
 
+
+function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
+  const { burn2Remaining, burn1Open } = React.useContext(BurnStatusContext)
+
+  const texture = useMemo(() => {
+    if (typeof document === 'undefined') return null
+    const canvas = document.createElement('canvas')
+    canvas.width = 640
+    canvas.height = 320
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+
+    // Background
+    ctx.fillStyle = '#f4ecd0'
+    ctx.fillRect(0, 0, 640, 320)
+
+    // Top brass rail
+    ctx.fillStyle = '#d6b55b'
+    ctx.fillRect(24, 18, 592, 6)
+
+    // Gold Seal row
+    ctx.font = 'bold 52px Arial Black, Georgia, serif'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#8a5a24'
+    ctx.textAlign = 'left'
+    ctx.fillText('GOLD SEAL', 32, 90)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = burn2Remaining > 0 ? '#8a5a24' : '#c43426'
+    ctx.fillText(`${burn2Remaining} / 5`, 608, 90)
+
+    // Mid divider
+    ctx.strokeStyle = '#d6b55b'
+    ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(24, 126); ctx.lineTo(616, 126); ctx.stroke()
+
+    // Museum Tag row
+    ctx.font = 'bold 52px Arial Black, Georgia, serif'
+    ctx.fillStyle = '#2f7168'
+    ctx.textAlign = 'left'
+    ctx.fillText('MUSEUM TAG', 32, 192)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = burn1Open ? '#2f7168' : '#c43426'
+    ctx.fillText(burn1Open ? 'OPEN' : 'CLOSED', 608, 192)
+
+    // Bottom divider
+    ctx.strokeStyle = '#d6b55b'
+    ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(24, 228); ctx.lineTo(616, 228); ctx.stroke()
+
+    // Burns left label
+    ctx.font = '900 32px Arial Black, Georgia, serif'
+    ctx.fillStyle = '#5c4a2a'
+    ctx.textAlign = 'center'
+    ctx.letterSpacing = '0.2em'
+    ctx.fillText('BURNS LEFT', 320, 278)
+
+    // Bottom brass rail
+    ctx.fillStyle = '#d6b55b'
+    ctx.fillRect(24, 296, 592, 6)
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.needsUpdate = true
+    return tex
+  }, [burn2Remaining, burn1Open])
+
+  useEffect(() => () => { texture?.dispose() }, [texture])
+  if (!texture) return null
+
+  const x = ROOM_CENTER_X + 0.14
+  const y = 1.52
+  const z = wallFaceZ + 0.066
+
+  return (
+    <group position={[x, y, z]}>
+      {/* Drop shadow */}
+      <mesh position={[0.06, -0.052, -0.018]} scale={[1.72, 0.78, 0.014]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryShadowMaterial()}
+      </mesh>
+      {/* Walnut outer frame */}
+      <OutlineMesh
+        position={[0, 0, 0]}
+        scale={[1.58, 0.68, 0.044]}
+        outlineWidth={0.018}
+        outlineColor="#17121f"
+        geometry={<boxGeometry args={[1, 1, 1]} />}
+        material={galleryFrameMaterial()}
+      />
+      {/* Cream mat */}
+      <mesh position={[0, 0, 0.028]} scale={[1.4, 0.52, 0.018]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryCreamMaterial()}
+      </mesh>
+      {/* Counter texture */}
+      <mesh position={[0, 0, 0.055]}>
+        <planeGeometry args={[1.28, 0.46]} />
+        <meshBasicMaterial map={texture} transparent toneMapped={false} depthWrite={false} />
+      </mesh>
+      {/* Top brass strip */}
+      <mesh position={[0, 0.31, 0.072]} scale={[1.26, 0.016, 0.01]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {mcmPanelBrassMaterial()}
+      </mesh>
+      {/* Bottom brass strip */}
+      <mesh position={[0, -0.31, 0.072]} scale={[1.26, 0.016, 0.01]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {mcmPanelBrassMaterial()}
+      </mesh>
+    </group>
+  )
+}
+
 function MuseumWallAccessories({ wallFaceZ }: { wallFaceZ: number }) {
   return (
     <group>
       <MuseumBackWallRhythm wallFaceZ={wallFaceZ} />
       <McmSunburstClock position={[ROOM_LEFT_X + 1.3, 1.74, wallFaceZ + 0.042]} scale={0.78} />
       <McmWallSconce position={[ROOM_LEFT_X + 3.22, 1.76, wallFaceZ + 0.05]} flip={1} />
-      <MuseumBackWallArt position={[ROOM_CENTER_X + 0.14, 1.5, wallFaceZ + 0.066]} />
+      <BurnCounterPlaque wallFaceZ={wallFaceZ} />
       <McmWallSconce position={[ROOM_RIGHT_X - 3.28, 1.76, wallFaceZ + 0.05]} flip={-1} />
       <McmStandingLamp position={[ROOM_RIGHT_X - 1.18, ROOM_FLOOR_Y + 0.02, ROOM_BACK_Z + 0.58]} />
     </group>
@@ -7925,6 +8046,8 @@ export function VacuumBurnRoomExperience({
   showDevSoldOutSwitch = true,
   onConnectWallet,
   onBurnRequested,
+  burn2Remaining = 5,
+  burn1Open = true,
 }: VacuumBurnRoomExperienceProps = {}) {
   const runtime = useRef(createRuntime())
   const dropSequenceStart = useRef<number | null>(null)
@@ -7983,6 +8106,7 @@ export function VacuumBurnRoomExperience({
   }
 
   return (
+    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open }}>
     <div
       style={{
         position: 'fixed',
@@ -8153,7 +8277,7 @@ export function VacuumBurnRoomExperience({
           minDistance={2.8}
           maxDistance={22}
           minPolarAngle={0.25}
-          maxPolarAngle={Math.PI * 0.58}
+          maxPolarAngle={Math.PI * 0.5}
           minAzimuthAngle={-0.5}
           maxAzimuthAngle={0.5}
         />
