@@ -1,11 +1,13 @@
 'use client'
 
-import { OrbitControls, RoundedBox } from '@react-three/drei'
+import { OrbitControls, RoundedBox, Text3D } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import React, { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { OutlineMesh } from '../render/OutlineMesh'
+import type { FontData } from '@react-three/drei'
+import helvetikerBoldJson from 'three/examples/fonts/helvetiker_bold.typeface.json'
 import { getToonRampTexture } from '../shaders/toonRamp'
 import {
   createNozzleEntryScratch,
@@ -18,6 +20,7 @@ import {
 } from '../vacuum/VacuumLab'
 import { VacuumStylePurpleBox } from '../vacuum/VacuumStyleBox'
 
+const helvetikerBold = helvetikerBoldJson as unknown as FontData
 const TABLE_POSITION = [-1.55, 0.02, 0.18] as const
 const BOX_TABLE_LOCAL_X = 0
 const TABLE_TOP_LOCAL_Y = 0.376 + 0.12 / 2
@@ -94,6 +97,7 @@ export type VacuumBurnRoomExperienceProps = {
   availableBoxCount?: number
   soldOutItemIds?: readonly BurnCatalogItemId[]
   showDevSoldOutSwitch?: boolean
+  showDevModeControls?: boolean
   onConnectWallet?: () => void | Promise<void>
   onBurnRequested?: (request: BurnRoomBurnRequest) => void | Promise<void>
   burn2Remaining?: number
@@ -626,23 +630,23 @@ function cursorInkMaterial({ opacity = 1 }: { opacity?: number } = {}) {
 }
 
 function cursorGloveMaterial() {
-  return <meshToonMaterial color="#fff0c8" gradientMap={getToonRampTexture()} depthWrite={false} depthTest={false} />
+  return <meshToonMaterial color="#fff0c8" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
 }
 
 function cursorGloveShadeMaterial() {
-  return <meshToonMaterial color="#e5ba72" gradientMap={getToonRampTexture()} depthWrite={false} depthTest={false} />
+  return <meshToonMaterial color="#e5ba72" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
 }
 
 function cursorCuffMaterial() {
-  return <meshToonMaterial color="#2f7168" gradientMap={getToonRampTexture()} depthWrite={false} depthTest={false} />
+  return <meshToonMaterial color="#2f7168" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
 }
 
 function cursorCuffInsetMaterial() {
-  return <meshToonMaterial color="#9fd7cc" gradientMap={getToonRampTexture()} depthWrite={false} depthTest={false} />
+  return <meshToonMaterial color="#9fd7cc" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
 }
 
 function cursorBrassMaterial() {
-  return <meshToonMaterial color="#d6b55b" gradientMap={getToonRampTexture()} depthWrite={false} depthTest={false} />
+  return <meshToonMaterial color="#d6b55b" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
 }
 
 function cursorGlowMaterial({ color = '#fff1a2', opacity = 0.22 }: { color?: string; opacity?: number } = {}) {
@@ -2979,112 +2983,180 @@ function McmStandingLamp({
 }
 
 
+function getDisplayTextCharacterWidth(character: string, size: number) {
+  const fontResolution = helvetikerBold.resolution || 1000
+  const glyph = helvetikerBold.glyphs?.[character]
+
+  if (glyph?.ha) return (glyph.ha / fontResolution) * size
+  if (character === ' ') return size * 0.52
+  if (character === '/') return size * 0.48
+  if (character === 'I') return size * 0.4
+  if (character === 'M' || character === 'W') return size * 0.92
+  if (/\d/.test(character)) return size * 0.68
+
+  return size * 0.74
+}
+
+function DisplayText3D({
+  text,
+  position,
+  size,
+  color,
+  align = 'left',
+  depth = 0.038,
+  letterSpacing = size * 0.2,
+  shadowColor = '#6f6258',
+}: {
+  text: string
+  position: readonly [number, number, number]
+  size: number
+  color: string
+  align?: 'left' | 'center' | 'right'
+  depth?: number
+  letterSpacing?: number
+  shadowColor?: string
+}) {
+  const characters = Array.from(text)
+  const characterOffsets = characters.map((character, index) => {
+    const offset = characters
+      .slice(0, index)
+      .reduce((total, previousCharacter) => total + getDisplayTextCharacterWidth(previousCharacter, size) + letterSpacing, 0)
+
+    return { character, offset }
+  })
+  const estimatedWidth = Math.max(
+    0,
+    characterOffsets.reduce((total, { character }) => total + getDisplayTextCharacterWidth(character, size) + letterSpacing, 0) - letterSpacing,
+  )
+  const xOffset = align === 'center' ? -estimatedWidth / 2 : align === 'right' ? -estimatedWidth : 0
+
+  return (
+    <group position={[position[0] + xOffset, position[1], position[2]]}>
+      {characterOffsets.map(({ character, offset }, index) => {
+        if (character === ' ') return null
+
+        return (
+          <group key={`display-text-${text}-${index}`} position={[offset, 0, 0]}>
+            <Text3D
+              font={helvetikerBold}
+              size={size}
+              height={depth}
+              curveSegments={3}
+              bevelEnabled
+              bevelThickness={depth * 0.22}
+              bevelSize={depth * 0.16}
+              bevelSegments={2}
+              position={[0.014, -0.014, -0.012]}
+            >
+              {character}
+              <meshBasicMaterial color={shadowColor} />
+            </Text3D>
+            <Text3D
+              font={helvetikerBold}
+              size={size}
+              height={depth}
+              curveSegments={3}
+              bevelEnabled
+              bevelThickness={depth * 0.22}
+              bevelSize={depth * 0.16}
+              bevelSegments={2}
+              position={[0, 0, 0]}
+            >
+              {character}
+              <meshToonMaterial color={color} gradientMap={getToonRampTexture()} />
+            </Text3D>
+          </group>
+        )
+      })}
+    </group>
+  )
+}
+
+
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const { burn2Remaining, burn1Open } = React.useContext(BurnStatusContext)
+  const goldSealCount = `${burn2Remaining} / 5`
+  const tagStatus = burn1Open ? 'OPEN' : 'CLOSED'
 
-  const texture = useMemo(() => {
-    if (typeof document === 'undefined') return null
-    const canvas = document.createElement('canvas')
-    canvas.width  = 900
-    canvas.height = 420
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-
-    // Cream background — same as galleryCreamMaterial
-    ctx.fillStyle = '#f3e5b9'
-    ctx.fillRect(0, 0, 900, 420)
-
-    // Thin inner border
-    ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 4
-    ctx.strokeRect(16, 16, 868, 388)
-
-    // ── BURNS LEFT header ──
-    ctx.font = '800 36px Arial Black, Impact, sans-serif'
-    ctx.fillStyle = '#5c3d2a'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('B U R N S   L E F T', 450, 58)
-
-    // Header rule
-    ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(30, 88); ctx.lineTo(870, 88); ctx.stroke()
-
-    // ── GOLD SEAL row ──
-    ctx.font = '800 72px Arial Black, Impact, sans-serif'
-    ctx.textAlign = 'left'
-    ctx.fillStyle = '#8a5a24'
-    ctx.fillText('GOLD SEAL', 40, 178)
-
-    // Count — right-aligned, colour changes when sold out
-    ctx.textAlign = 'right'
-    ctx.fillStyle = burn2Remaining > 0 ? '#c49a12' : '#c43426'
-    ctx.font = '900 80px Arial Black, Impact, sans-serif'
-    ctx.fillText(String(burn2Remaining) + ' / 5', 860, 178)
-
-    // Mid rule
-    ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(30, 238); ctx.lineTo(870, 238); ctx.stroke()
-
-    // ── MUSEUM TAG row ──
-    ctx.font = '800 72px Arial Black, Impact, sans-serif'
-    ctx.fillStyle = '#2f7168'
-    ctx.textAlign = 'left'
-    ctx.fillText('MUSEUM TAG', 40, 328)
-
-    ctx.textAlign = 'right'
-    ctx.fillStyle = burn1Open ? '#2f7168' : '#c43426'
-    ctx.font = '900 72px Arial Black, Impact, sans-serif'
-    ctx.fillText(burn1Open ? 'OPEN' : 'CLOSED', 860, 328)
-
-    // Bottom rule
-    ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(30, 388); ctx.lineTo(870, 388); ctx.stroke()
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.needsUpdate = true
-    return tex
-  }, [burn2Remaining, burn1Open])
-
-  useEffect(() => () => { texture?.dispose() }, [texture])
-  if (!texture) return null
-
-  // Bigger frame, same position as original MuseumBackWallArt
   return (
-    <group position={[ROOM_CENTER_X + 0.14, 1.5, wallFaceZ + 0.066]}>
-      {/* Drop shadow — renderOrder -2, always behind cursor */}
-      <mesh position={[0.07, -0.055, -0.018]} scale={[2.1, 0.84, 0.014]} renderOrder={-2}>
+    <group position={[ROOM_CENTER_X + 0.18, 1.9, wallFaceZ + 0.092]} renderOrder={20}>
+      <mesh position={[0.09, -0.07, -0.045]} scale={[2.62, 1.08, 0.026]}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryShadowMaterial()}
       </mesh>
-      {/* Walnut outer frame — same as MuseumBackWallArt */}
       <OutlineMesh
         position={[0, 0, 0]}
-        scale={[1.95, 0.76, 0.042]}
-        outlineWidth={0.018}
+        scale={[2.42, 0.98, 0.09]}
+        outlineWidth={0.024}
         outlineColor="#17121f"
         geometry={<boxGeometry args={[1, 1, 1]} />}
         material={galleryFrameMaterial()}
       />
-      {/* Grey mat */}
-      <mesh position={[0, 0, 0.03]} scale={[1.76, 0.58, 0.018]} renderOrder={-2}>
+      <mesh position={[0, 0, 0.062]} scale={[2.22, 0.78, 0.032]}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryMatMaterial()}
       </mesh>
-      {/* Cream content panel */}
-      <mesh position={[0, 0, 0.048]} scale={[1.62, 0.46, 0.012]} renderOrder={-2}>
+      <mesh position={[0, 0, 0.087]} scale={[2.02, 0.62, 0.026]}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryCreamMaterial()}
       </mesh>
-      {/* Canvas texture with text — renderOrder -1 */}
-      <mesh position={[0, 0, 0.058]} renderOrder={-1}>
-        <planeGeometry args={[1.55, 0.44]} />
-        <meshBasicMaterial map={texture} transparent toneMapped={false} depthWrite={false} />
+      <mesh position={[0, 0.38, 0.114]} scale={[2.16, 0.035, 0.028]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
       </mesh>
+      <mesh position={[0, -0.38, 0.114]} scale={[2.16, 0.035, 0.028]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      <mesh position={[-1.16, 0, 0.112]} scale={[0.04, 0.82, 0.026]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      <mesh position={[1.16, 0, 0.112]} scale={[0.04, 0.82, 0.026]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      {[-1.04, 1.04].map((x) => (
+        <group key={`burn-counter-flower-${x}`} position={[x, 0.35, 0.13]}>
+          {[0, 1, 2, 3].map((index) => (
+            <mesh key={`burn-counter-petal-${x}-${index}`} rotation={[0, 0, Math.PI / 4 + index * Math.PI / 2]} scale={[0.07, 0.018, 0.016]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {index % 2 === 0 ? galleryTealMaterial() : galleryRustMaterial()}
+            </mesh>
+          ))}
+          <mesh scale={[0.026, 0.026, 0.026]}>
+            <sphereGeometry args={[1, 10, 8]} />
+            {galleryGoldMaterial()}
+          </mesh>
+        </group>
+      ))}
+      <mesh position={[0, 0.18, 0.116]} scale={[1.78, 0.018, 0.018]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      <mesh position={[0, -0.13, 0.116]} scale={[1.78, 0.018, 0.018]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      <DisplayText3D text="BURNS LEFT" position={[0, 0.245, 0.125]} size={0.095} color="#5c3d2a" align="center" depth={0.028} />
+      <DisplayText3D text="GOLD SEAL" position={[-0.92, 0.015, 0.13]} size={0.095} color="#8a5a24" depth={0.032} />
+      <DisplayText3D
+        text={goldSealCount}
+        position={[0.92, 0.002, 0.132]}
+        size={0.12}
+        color={burn2Remaining > 0 ? '#c49a12' : '#c43426'}
+        align="right"
+        depth={0.04}
+      />
+      <DisplayText3D text="MUSEUM TAG" position={[-0.92, -0.27, 0.13]} size={0.088} color="#2f7168" depth={0.032} />
+      <DisplayText3D
+        text={tagStatus}
+        position={[0.92, -0.282, 0.132]}
+        size={burn1Open ? 0.122 : 0.096}
+        color={burn1Open ? '#2f7168' : '#c43426'}
+        align="right"
+        depth={0.04}
+      />
     </group>
   )
 }
@@ -3098,6 +3170,7 @@ function MuseumWallAccessories({ wallFaceZ }: { wallFaceZ: number }) {
       <McmWallSconce position={[ROOM_LEFT_X + 3.22, 1.76, wallFaceZ + 0.05]} flip={1} />
       <BurnCounterPlaque wallFaceZ={wallFaceZ} />
       <McmWallSconce position={[ROOM_RIGHT_X - 3.28, 1.76, wallFaceZ + 0.05]} flip={-1} />
+      <McmBackWallShelf wallFaceZ={wallFaceZ} />
       <McmStandingLamp position={[ROOM_RIGHT_X - 1.18, ROOM_FLOOR_Y + 0.02, ROOM_BACK_Z + 0.58]} />
     </group>
   )
@@ -3287,26 +3360,43 @@ function McmSideWallPaneling({
   const sidePanelCenterY = panelBottomY + sidePanelHeight / 2
   const sidePanelTopY = sidePanelCenterY + sidePanelHeight / 2
   const sidePanelBottomY = sidePanelCenterY - sidePanelHeight / 2
-  const panelCenters = [
-    ROOM_BACK_Z + 0.92,
-    doorZ + (side === 'left' ? 1.18 : -1.18),
-    ROOM_FRONT_Z - 0.92,
-  ] as const
+  const doorClearance = 0.72
+  const panelRanges = [
+    [ROOM_BACK_Z + 0.54, doorZ - doorClearance],
+    [doorZ + doorClearance, ROOM_FRONT_Z - 0.54],
+  ].filter(([startZ, endZ]) => endZ - startZ > 0.28)
+  const panelCenters = panelRanges.flatMap(([startZ, endZ]) => {
+    const length = endZ - startZ
+    return length > 1.55 ? [startZ + length * 0.32, startZ + length * 0.68] : [(startZ + endZ) / 2]
+  })
 
   return (
     <group>
-      <mesh position={[wallFaceX, sidePanelCenterY, ROOM_CENTER_Z]} scale={[0.032, sidePanelHeight, roomDepth - 1.18]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelWalnutMaterial()}
-      </mesh>
-      <mesh position={[wallFaceX + face * 0.012, sidePanelTopY, ROOM_CENTER_Z]} scale={[0.018, 0.042, roomDepth - 1.04]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
-      </mesh>
-      <mesh position={[wallFaceX + face * 0.01, sidePanelBottomY, ROOM_CENTER_Z]} scale={[0.018, 0.04, roomDepth - 1.04]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelInkMaterial()}
-      </mesh>
+      {panelRanges.map(([startZ, endZ]) => {
+        const centerZ = (startZ + endZ) / 2
+        const length = endZ - startZ
+
+        return (
+          <group key={`${side}-mcm-panel-clean-range-${startZ}-${endZ}`}>
+            <mesh position={[wallFaceX, sidePanelCenterY, centerZ]} scale={[0.032, sidePanelHeight, length]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {mcmPanelWalnutMaterial()}
+            </mesh>
+            <mesh position={[wallFaceX + face * 0.012, sidePanelTopY, centerZ]} scale={[0.018, 0.042, length + 0.08]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {mcmPanelBrassMaterial()}
+            </mesh>
+            <mesh position={[wallFaceX + face * 0.01, sidePanelBottomY, centerZ]} scale={[0.018, 0.04, length + 0.08]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {mcmPanelInkMaterial()}
+            </mesh>
+            <mesh position={[x + face * 0.016, sidePanelTopY + 0.12, centerZ]} scale={[0.012, 0.022, length]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {roomUpperWallLineMaterial()}
+            </mesh>
+          </group>
+        )
+      })}
       {panelCenters.map((z) => (
         <mesh key={`${side}-mcm-panel-quiet-seam-${z}`} position={[x + face * 0.004, sidePanelCenterY, z]} scale={[0.014, sidePanelHeight - 0.07, 0.018]}>
           <boxGeometry args={[1, 1, 1]} />
@@ -3314,18 +3404,23 @@ function McmSideWallPaneling({
         </mesh>
       ))}
       {panelCenters.map((z, index) => (
-        <mesh key={`${side}-mcm-panel-brass-cap-${z}`} position={[x + face * 0.014, sidePanelTopY - 0.09, z]} scale={[0.012, 0.016, index === 1 ? 0.46 : 0.38]}>
+        <mesh key={`${side}-mcm-panel-brass-cap-${z}`} position={[x + face * 0.014, sidePanelTopY - 0.09, z]} scale={[0.012, 0.016, index % 2 === 0 ? 0.38 : 0.46]}>
           <boxGeometry args={[1, 1, 1]} />
           {mcmPanelBrassMaterial()}
         </mesh>
       ))}
-      <mesh position={[x + face * 0.016, sidePanelTopY + 0.12, ROOM_CENTER_Z]} scale={[0.012, 0.022, roomDepth - 1.22]}>
+      <mesh position={[wallFaceX + face * 0.018, sidePanelCenterY, doorZ - doorClearance]} scale={[0.036, sidePanelHeight + 0.16, 0.044]}>
         <boxGeometry args={[1, 1, 1]} />
-        {roomUpperWallLineMaterial()}
+        {mcmPanelDarkWalnutMaterial()}
+      </mesh>
+      <mesh position={[wallFaceX + face * 0.018, sidePanelCenterY, doorZ + doorClearance]} scale={[0.036, sidePanelHeight + 0.16, 0.044]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {mcmPanelDarkWalnutMaterial()}
       </mesh>
     </group>
   )
 }
+
 
 function McmServiceDoor({
   wallFaceX,
@@ -3717,6 +3812,95 @@ function McmPunchNeedleTapestry({ face }: { face: 1 | -1 }) {
   )
 }
 
+function McmFloorPlant({
+  position,
+  flip = 1,
+}: {
+  position: readonly [number, number, number]
+  flip?: 1 | -1
+}) {
+  const leaves = [
+    { y: 0.46, z: -0.08, rotation: -0.48, scale: [0.08, 0.34, 0.045] as const },
+    { y: 0.56, z: 0.02, rotation: 0.36, scale: [0.075, 0.38, 0.045] as const },
+    { y: 0.38, z: 0.12, rotation: 0.78, scale: [0.07, 0.28, 0.04] as const },
+    { y: 0.66, z: -0.02, rotation: -0.12, scale: [0.07, 0.42, 0.045] as const },
+  ]
+
+  return (
+    <group position={position} rotation={[0, flip * -0.06, 0]}>
+      <mesh position={[0.05 * flip, 0.02, 0.04]} rotation={[-Math.PI / 2, 0, 0.12]} scale={[0.34, 0.22, 1]} renderOrder={3}>
+        <circleGeometry args={[1, 26]} />
+        {roomStageContactShadowMaterial()}
+      </mesh>
+      <OutlineMesh
+        position={[0, 0.18, 0]}
+        scale={[0.34, 0.36, 0.34]}
+        outlineWidth={0.012}
+        outlineColor="#17121f"
+        geometry={<cylinderGeometry args={[0.72, 0.95, 1, 12]} />}
+        material={galleryRustMaterial()}
+      />
+      <mesh position={[0, 0.39, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[0.2, 0.2, 0.025]}>
+        <cylinderGeometry args={[1, 1, 1, 12]} />
+        {mcmPanelDarkWalnutMaterial()}
+      </mesh>
+      <mesh position={[0, 0.42, 0]} scale={[0.22, 0.055, 0.22]}>
+        <sphereGeometry args={[1, 12, 8]} />
+        {mcmPanelDarkWalnutMaterial()}
+      </mesh>
+      {leaves.map(({ y, z, rotation, scale }, index) => (
+        <mesh key={`floor-plant-leaf-${index}`} position={[0.015 * flip, y, z]} rotation={[0.12, 0, flip * rotation]} scale={scale}>
+          <sphereGeometry args={[1, 12, 8]} />
+          {index % 2 === 0 ? galleryTealMaterial() : stageDoorMaterial()}
+        </mesh>
+      ))}
+      <mesh position={[0, 0.31, 0.19]} scale={[0.28, 0.026, 0.028]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+    </group>
+  )
+}
+
+function McmBackWallShelf({ wallFaceZ }: { wallFaceZ: number }) {
+  return (
+    <group position={[ROOM_RIGHT_X - 1.95, 1.08, wallFaceZ + 0.08]}>
+      <mesh position={[0, -0.08, -0.014]} scale={[1.24, 0.055, 0.045]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryShadowMaterial()}
+      </mesh>
+      <mesh position={[0, 0, 0]} scale={[1.18, 0.055, 0.09]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {mcmPanelDarkWalnutMaterial()}
+      </mesh>
+      <mesh position={[0, 0.045, 0.036]} scale={[1.02, 0.018, 0.028]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {mcmPanelBrassMaterial()}
+      </mesh>
+      <mesh position={[-0.38, 0.16, 0.04]} scale={[0.16, 0.22, 0.16]}>
+        <cylinderGeometry args={[0.82, 1, 1, 10]} />
+        {galleryRustMaterial()}
+      </mesh>
+      <mesh position={[-0.38, 0.31, 0.04]} scale={[0.13, 0.09, 0.13]}>
+        <sphereGeometry args={[1, 10, 8]} />
+        {galleryTealMaterial()}
+      </mesh>
+      <mesh position={[0.02, 0.16, 0.04]} rotation={[0, 0, -0.08]} scale={[0.22, 0.18, 0.18]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryCreamMaterial()}
+      </mesh>
+      <mesh position={[0.02, 0.28, 0.052]} rotation={[0, 0, -0.08]} scale={[0.18, 0.026, 0.19]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      <mesh position={[0.42, 0.12, 0.04]} rotation={[0, 0, 0.16]} scale={[0.12, 0.2, 0.12]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryTealMaterial()}
+      </mesh>
+    </group>
+  )
+}
+
 function RitualStagePool({
   position,
   scale,
@@ -4028,6 +4212,7 @@ function ToonRoomShell() {
       <MuseumSideWallArt wallFaceX={leftWallFaceX} side="left" z={ROOM_CENTER_Z + 0.68} />
       <MuseumSideWallArt wallFaceX={rightWallFaceX} side="right" z={ROOM_CENTER_Z - 0.68} />
       <MuseumWallAccessories wallFaceZ={wallFaceZ} />
+      <McmFloorPlant position={[ROOM_LEFT_X + 0.62, ROOM_FLOOR_Y + 0.02, ROOM_FRONT_Z - 0.92]} flip={1} />
 
       <mesh position={[ROOM_CENTER_X, ROOM_FLOOR_Y + 0.015, ROOM_BACK_Z + 0.055]} scale={[roomWidth - 0.1, 0.035, 0.035]}>
         <boxGeometry args={[1, 1, 1]} />
@@ -8038,11 +8223,47 @@ function RitualRunController({
   return null
 }
 
+function DevModeButton({
+  label,
+  active = false,
+  onClick,
+}: {
+  label: string
+  active?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: '9px 10px',
+        border: '2px solid #17121f',
+        borderRadius: 5,
+        background: active ? '#c43426' : '#d6b55b',
+        boxShadow: '3px 3px 0 #17121f',
+        color: active ? '#fff0a8' : '#17121f',
+        cursor: 'none',
+        fontFamily: 'inherit',
+        fontSize: 12,
+        fontWeight: 900,
+        letterSpacing: 0.5,
+        textAlign: 'left',
+        textTransform: 'uppercase',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+
 export function VacuumBurnRoomExperience({
   walletConnected: controlledWalletConnected,
   availableBoxCount: controlledAvailableBoxCount,
   soldOutItemIds: controlledSoldOutItemIds,
   showDevSoldOutSwitch = true,
+  showDevModeControls,
   onConnectWallet,
   onBurnRequested,
   burn2Remaining = 5,
@@ -8053,6 +8274,7 @@ export function VacuumBurnRoomExperience({
   const activeBoxIndexRef = useRef(0)
   const carryoverSequencesRef = useRef<CarryoverBoxSequence[]>([])
   const pendingBurnItemRef = useRef<BurnCatalogItem | null>(null)
+  const pendingDevRunRef = useRef(false)
   const previousControlledAvailableBoxCount = useRef(controlledAvailableBoxCount)
   const orbitControlsRef = useRef<OrbitControlsImpl | null>(null)
   const boxDropReplayKey = 0
@@ -8061,18 +8283,24 @@ export function VacuumBurnRoomExperience({
   const [burnDetailItemId, setBurnDetailItemId] = useState<BurnCatalogItemId | null>(null)
   const [burnPickerOpen, setBurnPickerOpen] = useState(false)
   const [devSoldOut, setDevSoldOut] = useState(false)
+  const [devPanelOpen, setDevPanelOpen] = useState(false)
+  const [devControlsEnabled, setDevControlsEnabled] = useState(false)
+  const [devWalletConnectedOverride, setDevWalletConnectedOverride] = useState<boolean | null>(null)
+  const [devAvailableBoxCountOverride, setDevAvailableBoxCountOverride] = useState<number | null>(null)
+  const [devQueuedBurnItemId, setDevQueuedBurnItemId] = useState<BurnCatalogItemId | null>(null)
   const [runActive, setRunActive] = useState(false)
   const [runTargetCount, setRunTargetCount] = useState(0)
   const [burnedWalletBoxCount, setBurnedWalletBoxCount] = useState(0)
   const [runCompletedBurnCount, setRunCompletedBurnCount] = useState(0)
   const [runNonce, setRunNonce] = useState(0)
-  const walletConnected = controlledWalletConnected ?? demoWalletConnected
+  const walletConnected = devWalletConnectedOverride ?? controlledWalletConnected ?? demoWalletConnected
+  const effectiveAvailableBoxCount = devAvailableBoxCountOverride ?? controlledAvailableBoxCount
   const controlledVisibleBoxCount =
-    controlledAvailableBoxCount === undefined
+    effectiveAvailableBoxCount === undefined
       ? DEMO_WALLET_BOX_COUNT
-      : Math.max(0, Math.min(DEMO_WALLET_BOX_COUNT, Math.floor(controlledAvailableBoxCount)))
+      : Math.max(0, Math.min(DEMO_WALLET_BOX_COUNT, Math.floor(effectiveAvailableBoxCount)))
   const externalHiddenWalletBoxCount =
-    controlledAvailableBoxCount === undefined ? 0 : DEMO_WALLET_BOX_COUNT - controlledVisibleBoxCount
+    effectiveAvailableBoxCount === undefined ? 0 : DEMO_WALLET_BOX_COUNT - controlledVisibleBoxCount
   const committedHiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, externalHiddenWalletBoxCount + burnedWalletBoxCount)
   const soldOutItemIds = controlledSoldOutItemIds ?? (devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : [])
   const hiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, committedHiddenWalletBoxCount + runCompletedBurnCount)
@@ -8085,12 +8313,27 @@ export function VacuumBurnRoomExperience({
     setRunCompletedBurnCount(0)
   }, [controlledAvailableBoxCount])
 
-  function startBurnRun(item: BurnCatalogItem) {
+  useEffect(() => {
+    if (showDevModeControls !== undefined) {
+      setDevControlsEnabled(showDevModeControls)
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    setDevControlsEnabled(
+      process.env.NODE_ENV !== 'production'
+      || params.has('dev')
+      || params.has('devmode')
+      || params.has('devMode'),
+    )
+  }, [showDevModeControls])
+
+  function startBurnRun(item: BurnCatalogItem, { ignoreAvailability = false }: { ignoreAvailability?: boolean } = {}) {
     const count = item.boxCost
     const remainingBoxes = Math.max(0, availableWalletBoxCount)
-    if (count <= 0 || count > remainingBoxes) return
+    if (count <= 0 || (!ignoreAvailability && count > remainingBoxes)) return
 
-    const targetCount = count
+    const targetCount = Math.min(DEMO_WALLET_BOX_COUNT, count)
     pendingBurnItemRef.current = item
     activeBoxIndexRef.current = committedHiddenWalletBoxCount
     carryoverSequencesRef.current = []
@@ -8103,6 +8346,49 @@ export function VacuumBurnRoomExperience({
     dropSequenceStart.current = null
     setRunNonce((nonce) => nonce + 1)
   }
+
+  function resetDevAnimationState({ walletConnected: nextWalletConnected = true }: { walletConnected?: boolean } = {}) {
+    pendingBurnItemRef.current = null
+    pendingDevRunRef.current = false
+    activeBoxIndexRef.current = 0
+    carryoverSequencesRef.current = []
+    runtime.current.swallowCycles = 0
+    runtime.current.gulpFlow = 0
+    runtime.current.gulpAge = 9
+    dropSequenceStart.current = null
+    setDevAvailableBoxCountOverride(DEMO_WALLET_BOX_COUNT)
+    setDevWalletConnectedOverride(nextWalletConnected)
+    setBurnedWalletBoxCount(0)
+    setRunCompletedBurnCount(0)
+    setRunTargetCount(0)
+    setRunActive(false)
+    setBurnDetailItemId(null)
+    setBurnPickerOpen(false)
+  }
+
+  function replayDevCrateDrop() {
+    resetDevAnimationState({ walletConnected: false })
+    window.setTimeout(() => {
+      setDevWalletConnectedOverride(true)
+    }, 90)
+  }
+
+  function queueDevBurnRun(itemId: BurnCatalogItemId) {
+    resetDevAnimationState({ walletConnected: true })
+    setSelectedBurnItemId(itemId)
+    setDevQueuedBurnItemId(itemId)
+  }
+
+  useEffect(() => {
+    if (devQueuedBurnItemId === null) return
+    if (devWalletConnectedOverride !== true || devAvailableBoxCountOverride !== DEMO_WALLET_BOX_COUNT) return
+
+    pendingDevRunRef.current = true
+    startBurnRun(getBurnCatalogItem(devQueuedBurnItemId), { ignoreAvailability: true })
+    setDevQueuedBurnItemId(null)
+  }, [devAvailableBoxCountOverride, devQueuedBurnItemId, devWalletConnectedOverride])
+
+  const showDevControls = showDevSoldOutSwitch || devControlsEnabled
 
   return (
     <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open }}>
@@ -8140,11 +8426,13 @@ export function VacuumBurnRoomExperience({
           }}
           onRunComplete={() => {
             const completedItem = pendingBurnItemRef.current
+            const completedDevRun = pendingDevRunRef.current
             setBurnedWalletBoxCount((currentCount) => Math.min(DEMO_WALLET_BOX_COUNT, currentCount + runTargetCount))
             setRunCompletedBurnCount(0)
             setRunActive(false)
             pendingBurnItemRef.current = null
-            if (completedItem && onBurnRequested) {
+            pendingDevRunRef.current = false
+            if (completedItem && onBurnRequested && !completedDevRun) {
               void onBurnRequested({
                 source: 'vacuum-head-box-ritual',
                 boxId: completedItem.id,
@@ -8281,34 +8569,70 @@ export function VacuumBurnRoomExperience({
           maxAzimuthAngle={0.5}
         />
       </Canvas>
-      {showDevSoldOutSwitch ? (
-        <button
-          type="button"
-          aria-pressed={devSoldOut}
-          onClick={() => {
-            setDevSoldOut((soldOut) => !soldOut)
-          }}
-          style={{
-            position: 'fixed',
-            top: 18,
-            right: 18,
-            zIndex: 10,
-            padding: '10px 16px',
-            border: '3px solid #17121f',
-            borderRadius: 6,
-            background: devSoldOut ? '#c43426' : '#d4dde0',
-            boxShadow: '4px 4px 0 #17121f',
-            color: devSoldOut ? '#fff0a8' : '#17121f',
-            cursor: 'none',
-            fontFamily: 'inherit',
-            fontSize: 14,
-            fontWeight: 800,
-            letterSpacing: 0,
-            textTransform: 'uppercase',
-          }}
-        >
-          Dev sold out: {devSoldOut ? 'on' : 'off'}
-        </button>
+      {showDevControls ? (
+        <>
+          <button
+            type="button"
+            aria-expanded={devPanelOpen}
+            onClick={() => {
+              setDevPanelOpen((open) => !open)
+            }}
+            style={{
+              position: 'fixed',
+              top: 18,
+              right: 18,
+              zIndex: 10,
+              padding: '10px 16px',
+              border: '3px solid #17121f',
+              borderRadius: 6,
+              background: devPanelOpen ? '#d6b55b' : '#d4dde0',
+              boxShadow: '4px 4px 0 #17121f',
+              color: '#17121f',
+              cursor: 'none',
+              fontFamily: 'inherit',
+              fontSize: 14,
+              fontWeight: 900,
+              letterSpacing: 0,
+              textTransform: 'uppercase',
+            }}
+          >
+            Dev mode
+          </button>
+          {devPanelOpen ? (
+            <div
+              style={{
+                position: 'fixed',
+                top: 66,
+                right: 18,
+                zIndex: 10,
+                display: 'grid',
+                gap: 9,
+                width: 220,
+                padding: 12,
+                border: '3px solid #17121f',
+                borderRadius: 8,
+                background: '#efe5c7',
+                boxShadow: '5px 5px 0 #17121f',
+                color: '#17121f',
+                fontFamily: 'inherit',
+              }}
+            >
+              <DevModeButton label="Drop crates" onClick={replayDevCrateDrop} />
+              <DevModeButton label="Test burn 1" onClick={() => queueDevBurnRun('archive-tag')} />
+              <DevModeButton label="Test burn 2" onClick={() => queueDevBurnRun('gilded-seal')} />
+              <DevModeButton label="Reset crates" onClick={() => resetDevAnimationState({ walletConnected: true })} />
+              {showDevSoldOutSwitch ? (
+                <DevModeButton
+                  label={`Sold out: ${devSoldOut ? 'on' : 'off'}`}
+                  active={devSoldOut}
+                  onClick={() => {
+                    setDevSoldOut((soldOut) => !soldOut)
+                  }}
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
     </BurnStatusContext.Provider>
