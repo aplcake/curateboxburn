@@ -1,10 +1,11 @@
 'use client'
 
-import { OrbitControls, RoundedBox } from '@react-three/drei'
+import { OrbitControls, RoundedBox, Text3D } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import React, { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
+import helvetikerBoldFont from 'three/examples/fonts/helvetiker_bold.typeface.json'
 import { OutlineMesh } from '../render/OutlineMesh'
 import { getToonRampTexture } from '../shaders/toonRamp'
 import {
@@ -527,6 +528,30 @@ function galleryGoldMaterial() {
 
 function galleryRustMaterial() {
   return <meshToonMaterial color="#ad6844" gradientMap={getToonRampTexture()} />
+}
+
+function displayRaisedTextMaterial({ color = '#5c3d2a' }: { color?: string } = {}) {
+  return <meshToonMaterial color={color} gradientMap={getToonRampTexture()} />
+}
+
+function displayTextShadowMaterial() {
+  return <meshBasicMaterial color="#17121f" transparent opacity={0.28} depthWrite={false} />
+}
+
+function roomPlantLeafMaterial() {
+  return <meshToonMaterial color="#3f866e" gradientMap={getToonRampTexture()} />
+}
+
+function roomPlantDarkLeafMaterial() {
+  return <meshToonMaterial color="#2f7168" gradientMap={getToonRampTexture()} />
+}
+
+function roomPlanterMaterial() {
+  return <meshToonMaterial color="#d8b56b" gradientMap={getToonRampTexture()} />
+}
+
+function roomPlanterBandMaterial() {
+  return <meshBasicMaterial color="#2f7168" toneMapped={false} />
 }
 
 function galleryShadowMaterial() {
@@ -2979,112 +3004,138 @@ function McmStandingLamp({
 }
 
 
+const DISPLAY_FONT = helvetikerBoldFont as unknown as string
+
+function DisplayText3D({
+  children,
+  position,
+  size,
+  color = '#5c3d2a',
+  anchor = 'left',
+}: {
+  children: string
+  position: [number, number, number]
+  size: number
+  color?: string
+  anchor?: 'left' | 'center' | 'right'
+}) {
+  const width = children.length * size * 0.58
+  const xOffset = anchor === 'center' ? -width / 2 : anchor === 'right' ? -width : 0
+
+  return (
+    <group position={position}>
+      <Text3D
+        font={DISPLAY_FONT}
+        size={size}
+        height={0.026}
+        curveSegments={5}
+        bevelEnabled
+        bevelThickness={0.004}
+        bevelSize={0.003}
+        bevelSegments={1}
+        letterSpacing={0.02}
+        position={[xOffset + 0.018, -0.018, -0.012]}
+      >
+        {children}
+        {displayTextShadowMaterial()}
+      </Text3D>
+      <Text3D
+        font={DISPLAY_FONT}
+        size={size}
+        height={0.036}
+        curveSegments={6}
+        bevelEnabled
+        bevelThickness={0.006}
+        bevelSize={0.004}
+        bevelSegments={2}
+        letterSpacing={0.02}
+        position={[xOffset, 0, 0.012]}
+      >
+        {children}
+        {displayRaisedTextMaterial({ color })}
+      </Text3D>
+    </group>
+  )
+}
+
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const { burn2Remaining, burn1Open } = React.useContext(BurnStatusContext)
+  const goldSealColor = burn2Remaining > 0 ? '#c49a12' : '#c43426'
+  const museumTagColor = burn1Open ? '#2f7168' : '#c43426'
+  const cornerPositions = [
+    [-1.13, 0.47],
+    [1.13, 0.47],
+    [-1.13, -0.47],
+    [1.13, -0.47],
+  ] as const
+  const sunbursts = [-0.9, -0.72, 0.72, 0.9] as const
 
-  const texture = useMemo(() => {
-    if (typeof document === 'undefined') return null
-    const canvas = document.createElement('canvas')
-    canvas.width  = 900
-    canvas.height = 420
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-
-    // Cream background — same as galleryCreamMaterial
-    ctx.fillStyle = '#f3e5b9'
-    ctx.fillRect(0, 0, 900, 420)
-
-    // Thin inner border
-    ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 4
-    ctx.strokeRect(16, 16, 868, 388)
-
-    // ── BURNS LEFT header ──
-    ctx.font = '800 36px Arial Black, Impact, sans-serif'
-    ctx.fillStyle = '#5c3d2a'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText('B U R N S   L E F T', 450, 58)
-
-    // Header rule
-    ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(30, 88); ctx.lineTo(870, 88); ctx.stroke()
-
-    // ── GOLD SEAL row ──
-    ctx.font = '800 72px Arial Black, Impact, sans-serif'
-    ctx.textAlign = 'left'
-    ctx.fillStyle = '#8a5a24'
-    ctx.fillText('GOLD SEAL', 40, 178)
-
-    // Count — right-aligned, colour changes when sold out
-    ctx.textAlign = 'right'
-    ctx.fillStyle = burn2Remaining > 0 ? '#c49a12' : '#c43426'
-    ctx.font = '900 80px Arial Black, Impact, sans-serif'
-    ctx.fillText(String(burn2Remaining) + ' / 5', 860, 178)
-
-    // Mid rule
-    ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(30, 238); ctx.lineTo(870, 238); ctx.stroke()
-
-    // ── MUSEUM TAG row ──
-    ctx.font = '800 72px Arial Black, Impact, sans-serif'
-    ctx.fillStyle = '#2f7168'
-    ctx.textAlign = 'left'
-    ctx.fillText('MUSEUM TAG', 40, 328)
-
-    ctx.textAlign = 'right'
-    ctx.fillStyle = burn1Open ? '#2f7168' : '#c43426'
-    ctx.font = '900 72px Arial Black, Impact, sans-serif'
-    ctx.fillText(burn1Open ? 'OPEN' : 'CLOSED', 860, 328)
-
-    // Bottom rule
-    ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(30, 388); ctx.lineTo(870, 388); ctx.stroke()
-
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.needsUpdate = true
-    return tex
-  }, [burn2Remaining, burn1Open])
-
-  useEffect(() => () => { texture?.dispose() }, [texture])
-  if (!texture) return null
-
-  // Bigger frame, same position as original MuseumBackWallArt
   return (
-    <group position={[ROOM_CENTER_X + 0.14, 1.5, wallFaceZ + 0.066]}>
-      {/* Drop shadow — renderOrder -2, always behind cursor */}
-      <mesh position={[0.07, -0.055, -0.018]} scale={[2.1, 0.84, 0.014]} renderOrder={-2}>
+    <group position={[ROOM_CENTER_X + 0.14, 1.54, wallFaceZ + 0.092]}>
+      <mesh position={[0.08, -0.065, -0.05]} scale={[2.56, 1.16, 0.018]} renderOrder={-4}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryShadowMaterial()}
       </mesh>
-      {/* Walnut outer frame — same as MuseumBackWallArt */}
       <OutlineMesh
         position={[0, 0, 0]}
-        scale={[1.95, 0.76, 0.042]}
-        outlineWidth={0.018}
+        scale={[2.38, 1.02, 0.08]}
+        outlineWidth={0.024}
         outlineColor="#17121f"
         geometry={<boxGeometry args={[1, 1, 1]} />}
         material={galleryFrameMaterial()}
       />
-      {/* Grey mat */}
-      <mesh position={[0, 0, 0.03]} scale={[1.76, 0.58, 0.018]} renderOrder={-2}>
+      <mesh position={[0, 0, 0.06]} scale={[2.16, 0.82, 0.034]}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryMatMaterial()}
       </mesh>
-      {/* Cream content panel */}
-      <mesh position={[0, 0, 0.048]} scale={[1.62, 0.46, 0.012]} renderOrder={-2}>
-        <boxGeometry args={[1, 1, 1]} />
+      <RoundedBox args={[1.96, 0.66, 0.045]} radius={0.035} smoothness={6} position={[0, -0.01, 0.088]}>
         {galleryCreamMaterial()}
+      </RoundedBox>
+      <mesh position={[0, 0.235, 0.122]} scale={[1.72, 0.018, 0.018]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
       </mesh>
-      {/* Canvas texture with text — renderOrder -1 */}
-      <mesh position={[0, 0, 0.058]} renderOrder={-1}>
-        <planeGeometry args={[1.55, 0.44]} />
-        <meshBasicMaterial map={texture} transparent toneMapped={false} depthWrite={false} />
+      <mesh position={[0, -0.1, 0.122]} scale={[1.74, 0.018, 0.018]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
       </mesh>
+      <mesh position={[0, -0.405, 0.122]} scale={[1.7, 0.014, 0.014]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      {cornerPositions.map(([x, y]) => (
+        <group key={`burn-display-corner-${x}-${y}`} position={[x, y, 0.128]}>
+          <mesh scale={[0.055, 0.055, 0.022]}>
+            <sphereGeometry args={[1, 14, 10]} />
+            {galleryGoldMaterial()}
+          </mesh>
+          <mesh rotation={[0, 0, Math.PI / 4]} scale={[0.08, 0.014, 0.014]}>
+            <boxGeometry args={[1, 1, 1]} />
+            {mcmPanelInkMaterial()}
+          </mesh>
+        </group>
+      ))}
+      {sunbursts.map((x, index) => (
+        <mesh key={`burn-display-sunburst-${x}`} position={[x, 0.355, 0.13]} rotation={[0, 0, index % 2 === 0 ? 0.46 : -0.46]} scale={[0.13, 0.018, 0.016]}>
+          <boxGeometry args={[1, 1, 1]} />
+          {index < 2 ? galleryRustMaterial() : galleryTealMaterial()}
+        </mesh>
+      ))}
+      <DisplayText3D position={[0, 0.305, 0.145]} size={0.085} anchor="center" color="#5c3d2a">
+        BURNS LEFT
+      </DisplayText3D>
+      <DisplayText3D position={[-0.84, 0.03, 0.145]} size={0.122} color="#8a5a24">
+        GOLD SEAL
+      </DisplayText3D>
+      <DisplayText3D position={[0.86, 0.03, 0.145]} size={0.13} anchor="right" color={goldSealColor}>
+        {`${burn2Remaining} / 5`}
+      </DisplayText3D>
+      <DisplayText3D position={[-0.84, -0.275, 0.145]} size={0.108} color="#2f7168">
+        MUSEUM TAG
+      </DisplayText3D>
+      <DisplayText3D position={[0.88, -0.275, 0.145]} size={burn1Open ? 0.112 : 0.088} anchor="right" color={museumTagColor}>
+        {burn1Open ? 'OPEN' : 'CLOSED'}
+      </DisplayText3D>
     </group>
   )
 }
@@ -3287,26 +3338,46 @@ function McmSideWallPaneling({
   const sidePanelCenterY = panelBottomY + sidePanelHeight / 2
   const sidePanelTopY = sidePanelCenterY + sidePanelHeight / 2
   const sidePanelBottomY = sidePanelCenterY - sidePanelHeight / 2
-  const panelCenters = [
-    ROOM_BACK_Z + 0.92,
-    doorZ + (side === 'left' ? 1.18 : -1.18),
-    ROOM_FRONT_Z - 0.92,
+  const doorClearance = 1.36
+  const segmentPadding = 0.22
+  const rawSegments = [
+    [ROOM_BACK_Z + 0.58, doorZ - doorClearance / 2 - segmentPadding],
+    [doorZ + doorClearance / 2 + segmentPadding, ROOM_FRONT_Z - 0.58],
   ] as const
+  const panelSegments = rawSegments.filter(([start, end]) => end - start > 0.3)
+  const panelCenters = panelSegments.flatMap(([start, end], segmentIndex) => {
+    const length = end - start
+    return length > 1.8
+      ? [start + length * 0.34, start + length * 0.68]
+      : [(start + end) / 2 + (segmentIndex === 0 ? -0.06 : 0.06)]
+  })
 
   return (
     <group>
-      <mesh position={[wallFaceX, sidePanelCenterY, ROOM_CENTER_Z]} scale={[0.032, sidePanelHeight, roomDepth - 1.18]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelWalnutMaterial()}
-      </mesh>
-      <mesh position={[wallFaceX + face * 0.012, sidePanelTopY, ROOM_CENTER_Z]} scale={[0.018, 0.042, roomDepth - 1.04]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
-      </mesh>
-      <mesh position={[wallFaceX + face * 0.01, sidePanelBottomY, ROOM_CENTER_Z]} scale={[0.018, 0.04, roomDepth - 1.04]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelInkMaterial()}
-      </mesh>
+      {panelSegments.map(([start, end]) => {
+        const center = (start + end) / 2
+        const length = end - start
+        return (
+          <group key={`${side}-mcm-clean-panel-segment-${start}-${end}`}>
+            <mesh position={[wallFaceX, sidePanelCenterY, center]} scale={[0.032, sidePanelHeight, length]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {mcmPanelWalnutMaterial()}
+            </mesh>
+            <mesh position={[wallFaceX + face * 0.012, sidePanelTopY, center]} scale={[0.018, 0.042, length + 0.08]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {mcmPanelBrassMaterial()}
+            </mesh>
+            <mesh position={[wallFaceX + face * 0.01, sidePanelBottomY, center]} scale={[0.018, 0.04, length + 0.08]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {mcmPanelInkMaterial()}
+            </mesh>
+            <mesh position={[x + face * 0.016, sidePanelTopY + 0.12, center]} scale={[0.012, 0.022, length - 0.08]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {roomUpperWallLineMaterial()}
+            </mesh>
+          </group>
+        )
+      })}
       {panelCenters.map((z) => (
         <mesh key={`${side}-mcm-panel-quiet-seam-${z}`} position={[x + face * 0.004, sidePanelCenterY, z]} scale={[0.014, sidePanelHeight - 0.07, 0.018]}>
           <boxGeometry args={[1, 1, 1]} />
@@ -3314,18 +3385,15 @@ function McmSideWallPaneling({
         </mesh>
       ))}
       {panelCenters.map((z, index) => (
-        <mesh key={`${side}-mcm-panel-brass-cap-${z}`} position={[x + face * 0.014, sidePanelTopY - 0.09, z]} scale={[0.012, 0.016, index === 1 ? 0.46 : 0.38]}>
+        <mesh key={`${side}-mcm-panel-brass-cap-${z}`} position={[x + face * 0.014, sidePanelTopY - 0.09, z]} scale={[0.012, 0.016, index % 2 === 0 ? 0.38 : 0.46]}>
           <boxGeometry args={[1, 1, 1]} />
           {mcmPanelBrassMaterial()}
         </mesh>
       ))}
-      <mesh position={[x + face * 0.016, sidePanelTopY + 0.12, ROOM_CENTER_Z]} scale={[0.012, 0.022, roomDepth - 1.22]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {roomUpperWallLineMaterial()}
-      </mesh>
     </group>
   )
 }
+
 
 function McmServiceDoor({
   wallFaceX,
@@ -3831,6 +3899,83 @@ function McmIncineratorNook() {
   )
 }
 
+function McmRoomPlanter({ position, scale = 1, flip = 1 }: { position: [number, number, number]; scale?: number; flip?: 1 | -1 }) {
+  const leaves = [
+    { x: -0.2, y: 0.52, z: 0.0, r: -0.52, s: [0.095, 0.34, 0.026] as const, dark: false },
+    { x: -0.08, y: 0.62, z: -0.04, r: -0.2, s: [0.08, 0.42, 0.024] as const, dark: true },
+    { x: 0.08, y: 0.6, z: 0.03, r: 0.22, s: [0.085, 0.39, 0.024] as const, dark: false },
+    { x: 0.22, y: 0.5, z: -0.02, r: 0.5, s: [0.095, 0.32, 0.026] as const, dark: true },
+    { x: 0, y: 0.72, z: 0.02, r: 0.02, s: [0.08, 0.46, 0.024] as const, dark: false },
+  ]
+
+  return (
+    <group position={position} scale={[scale, scale, scale]}>
+      <mesh position={[0.08 * flip, 0.01, 0.04]} rotation={[-Math.PI / 2, 0, -0.12 * flip]} scale={[0.5, 0.34, 1]} renderOrder={3}>
+        <circleGeometry args={[1, 28]} />
+        {galleryShadowMaterial()}
+      </mesh>
+      <RoundedBox args={[0.46, 0.34, 0.38]} radius={0.075} smoothness={6} position={[0, 0.18, 0]}>
+        {roomPlanterMaterial()}
+      </RoundedBox>
+      <mesh position={[0, 0.26, 0.196]} scale={[0.38, 0.035, 0.014]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {roomPlanterBandMaterial()}
+      </mesh>
+      <mesh position={[0, 0.39, 0]} scale={[0.32, 0.055, 0.28]}>
+        <cylinderGeometry args={[1, 1, 1, 22]} />
+        {mcmPanelDarkWalnutMaterial()}
+      </mesh>
+      {leaves.map((leaf, index) => (
+        <mesh
+          key={`room-planter-leaf-${index}`}
+          position={[leaf.x * flip, leaf.y, leaf.z]}
+          rotation={[0.16, 0.12 * flip, leaf.r * flip]}
+          scale={leaf.s}
+        >
+          <sphereGeometry args={[1, 14, 8]} />
+          {leaf.dark ? roomPlantDarkLeafMaterial() : roomPlantLeafMaterial()}
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function McmBackWallShelf({ wallFaceZ }: { wallFaceZ: number }) {
+  return (
+    <group position={[ROOM_RIGHT_X - 1.55, 1.08, wallFaceZ + 0.058]}>
+      <mesh position={[0, 0, 0]} scale={[1.08, 0.06, 0.11]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {mcmPanelDarkWalnutMaterial()}
+      </mesh>
+      <mesh position={[0, -0.055, 0.018]} scale={[0.88, 0.026, 0.034]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {mcmPanelBrassMaterial()}
+      </mesh>
+      <mesh position={[-0.34, 0.145, 0.07]} scale={[0.09, 0.22, 0.09]}>
+        <cylinderGeometry args={[0.78, 1, 1, 16]} />
+        {galleryRustMaterial()}
+      </mesh>
+      <mesh position={[-0.34, 0.29, 0.07]} scale={[0.06, 0.055, 0.06]}>
+        <sphereGeometry args={[1, 12, 8]} />
+        {roomPlantLeafMaterial()}
+      </mesh>
+      <mesh position={[0.03, 0.11, 0.07]} rotation={[0, 0, -0.1]} scale={[0.1, 0.18, 0.1]}>
+        <cylinderGeometry args={[0.62, 0.9, 1, 14]} />
+        {galleryTealMaterial()}
+      </mesh>
+      <mesh position={[0.34, 0.105, 0.07]} scale={[0.14, 0.14, 0.035]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryCreamMaterial()}
+      </mesh>
+      <mesh position={[0.34, 0.19, 0.082]} scale={[0.16, 0.018, 0.018]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+    </group>
+  )
+}
+
+
 function ToonRoomShell() {
   const roomWidth = ROOM_RIGHT_X - ROOM_LEFT_X
   const roomDepth = ROOM_FRONT_Z - ROOM_BACK_Z
@@ -3852,6 +3997,15 @@ function ToonRoomShell() {
   const frontWallZ = ROOM_FRONT_Z - 0.12
   const leftServiceDoorZ = ROOM_BACK_Z + 1.22
   const rightServiceDoorZ = ROOM_FRONT_Z - 1.3
+  const sideTrimDoorClearance = 1.5
+  const leftSideTrimSegments = [
+    [ROOM_BACK_Z + 0.24, leftServiceDoorZ - sideTrimDoorClearance / 2],
+    [leftServiceDoorZ + sideTrimDoorClearance / 2, ROOM_FRONT_Z - 0.24],
+  ] as const
+  const rightSideTrimSegments = [
+    [ROOM_BACK_Z + 0.24, rightServiceDoorZ - sideTrimDoorClearance / 2],
+    [rightServiceDoorZ + sideTrimDoorClearance / 2, ROOM_FRONT_Z - 0.24],
+  ] as const
   const clockRailClearX = ROOM_LEFT_X + 2.18
   const backPanelCapEndX = ROOM_CENTER_X + (roomWidth - 1.02) / 2
   const backPanelCapWidth = backPanelCapEndX - clockRailClearX
@@ -3936,14 +4090,18 @@ function ToonRoomShell() {
         <boxGeometry args={[1, 1, 1]} />
         {mcmPanelBrassMaterial()}
       </mesh>
-      <mesh position={[ROOM_LEFT_X + 0.118, baseboardY + 0.08, ROOM_CENTER_Z]} scale={[0.02, 0.024, roomDepth - 0.48]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
-      </mesh>
-      <mesh position={[ROOM_RIGHT_X - 0.118, baseboardY + 0.08, ROOM_CENTER_Z]} scale={[0.02, 0.024, roomDepth - 0.48]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
-      </mesh>
+      {leftSideTrimSegments.map(([start, end]) => (
+        <mesh key={`left-brass-baseboard-clear-${start}-${end}`} position={[ROOM_LEFT_X + 0.118, baseboardY + 0.08, (start + end) / 2]} scale={[0.02, 0.024, end - start]}>
+          <boxGeometry args={[1, 1, 1]} />
+          {mcmPanelBrassMaterial()}
+        </mesh>
+      ))}
+      {rightSideTrimSegments.map(([start, end]) => (
+        <mesh key={`right-brass-baseboard-clear-${start}-${end}`} position={[ROOM_RIGHT_X - 0.118, baseboardY + 0.08, (start + end) / 2]} scale={[0.02, 0.024, end - start]}>
+          <boxGeometry args={[1, 1, 1]} />
+          {mcmPanelBrassMaterial()}
+        </mesh>
+      ))}
       {upperBackSeams.map((x) => (
         <mesh key={`upper-back-wall-seam-${x}`} position={[x, 2.04, wallFaceZ + 0.004]} scale={[0.018, 0.96, 0.012]}>
           <boxGeometry args={[1, 1, 1]} />
@@ -4028,19 +4186,26 @@ function ToonRoomShell() {
       <MuseumSideWallArt wallFaceX={leftWallFaceX} side="left" z={ROOM_CENTER_Z + 0.68} />
       <MuseumSideWallArt wallFaceX={rightWallFaceX} side="right" z={ROOM_CENTER_Z - 0.68} />
       <MuseumWallAccessories wallFaceZ={wallFaceZ} />
+      <McmBackWallShelf wallFaceZ={wallFaceZ} />
+      <McmRoomPlanter position={[ROOM_LEFT_X + 0.72, ROOM_FLOOR_Y + 0.02, ROOM_FRONT_Z - 0.68]} scale={0.82} flip={1} />
+      <McmRoomPlanter position={[ROOM_RIGHT_X - 0.72, ROOM_FLOOR_Y + 0.02, ROOM_BACK_Z + 1.02]} scale={0.72} flip={-1} />
 
       <mesh position={[ROOM_CENTER_X, ROOM_FLOOR_Y + 0.015, ROOM_BACK_Z + 0.055]} scale={[roomWidth - 0.1, 0.035, 0.035]}>
         <boxGeometry args={[1, 1, 1]} />
         {roomTrimMaterial()}
       </mesh>
-      <mesh position={[ROOM_LEFT_X + 0.055, ROOM_FLOOR_Y + 0.015, ROOM_CENTER_Z]} scale={[0.035, 0.035, roomDepth - 0.1]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {roomTrimMaterial()}
-      </mesh>
-      <mesh position={[ROOM_RIGHT_X - 0.055, ROOM_FLOOR_Y + 0.015, ROOM_CENTER_Z]} scale={[0.035, 0.035, roomDepth - 0.1]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {roomTrimMaterial()}
-      </mesh>
+      {leftSideTrimSegments.map(([start, end]) => (
+        <mesh key={`left-floor-trim-clear-${start}-${end}`} position={[ROOM_LEFT_X + 0.055, ROOM_FLOOR_Y + 0.015, (start + end) / 2]} scale={[0.035, 0.035, end - start]}>
+          <boxGeometry args={[1, 1, 1]} />
+          {roomTrimMaterial()}
+        </mesh>
+      ))}
+      {rightSideTrimSegments.map(([start, end]) => (
+        <mesh key={`right-floor-trim-clear-${start}-${end}`} position={[ROOM_RIGHT_X - 0.055, ROOM_FLOOR_Y + 0.015, (start + end) / 2]} scale={[0.035, 0.035, end - start]}>
+          <boxGeometry args={[1, 1, 1]} />
+          {roomTrimMaterial()}
+        </mesh>
+      ))}
       <mesh position={[ROOM_LEFT_X + 0.08, 1.16, ROOM_BACK_Z + 0.065]} scale={[0.045, 2.9, 0.045]}>
         <boxGeometry args={[1, 1, 1]} />
         {roomTrimMaterial()}
@@ -5981,7 +6146,7 @@ function MuseumToonCursor() {
     clickPulse.current = Math.max(0, clickPulse.current - dt * 2.9)
     pointerVisible.current += ((hasPointer.current ? 1 : 0) - pointerVisible.current) * (1 - Math.exp(-10 * dt))
 
-    const cameraDistance = size.width < 620 ? 3.45 : 4.35
+    const cameraDistance = size.width < 620 ? 1.62 : 2.05
     const perspectiveCamera = camera as THREE.PerspectiveCamera
     const fov = perspectiveCamera.isPerspectiveCamera ? THREE.MathUtils.degToRad(perspectiveCamera.fov) : 0.72
     const viewHeight = 2 * Math.tan(fov / 2) * cameraDistance
@@ -5997,7 +6162,8 @@ function MuseumToonCursor() {
     rootNode.visible = pointerVisible.current > 0.025
     rootNode.position.copy(targetPosition)
     rootNode.quaternion.copy(camera.quaternion)
-    rootNode.scale.setScalar(size.width < 620 ? 0.56 : 0.68)
+    const cursorBaseDistance = size.width < 620 ? 3.45 : 4.35
+    rootNode.scale.setScalar((size.width < 620 ? 0.56 : 0.68) * (cameraDistance / cursorBaseDistance))
 
     const t = clock.elapsedTime
     const clickBounce = clickPulse.current > 0 ? Math.sin((1 - clickPulse.current) * Math.PI) * clickPulse.current : 0
