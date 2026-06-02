@@ -2982,110 +2982,108 @@ function McmStandingLamp({
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const { burn2Remaining, burn1Open } = React.useContext(BurnStatusContext)
 
-  const x = ROOM_CENTER_X + 0.14
-  const y = 1.5
-  const z = wallFaceZ + 0.066
+  const texture = useMemo(() => {
+    if (typeof document === 'undefined') return null
+    const canvas = document.createElement('canvas')
+    canvas.width  = 900
+    canvas.height = 420
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
 
-  // Colours driven by state — same palette as the rest of the room
-  const sealColor  = burn2Remaining > 0 ? '#8a5a24' : '#c43426'
-  const tagColor   = burn1Open ? '#2f7168' : '#c43426'
+    // Cream background — same as galleryCreamMaterial
+    ctx.fillStyle = '#f3e5b9'
+    ctx.fillRect(0, 0, 900, 420)
 
+    // Thin inner border
+    ctx.strokeStyle = '#d6b55b'
+    ctx.lineWidth = 4
+    ctx.strokeRect(16, 16, 868, 388)
+
+    // ── BURNS LEFT header ──
+    ctx.font = '800 36px Arial Black, Impact, sans-serif'
+    ctx.fillStyle = '#5c3d2a'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('B U R N S   L E F T', 450, 58)
+
+    // Header rule
+    ctx.strokeStyle = '#d6b55b'
+    ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(30, 88); ctx.lineTo(870, 88); ctx.stroke()
+
+    // ── GOLD SEAL row ──
+    ctx.font = '800 72px Arial Black, Impact, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#8a5a24'
+    ctx.fillText('GOLD SEAL', 40, 178)
+
+    // Count — right-aligned, colour changes when sold out
+    ctx.textAlign = 'right'
+    ctx.fillStyle = burn2Remaining > 0 ? '#c49a12' : '#c43426'
+    ctx.font = '900 80px Arial Black, Impact, sans-serif'
+    ctx.fillText(String(burn2Remaining) + ' / 5', 860, 178)
+
+    // Mid rule
+    ctx.strokeStyle = '#d6b55b'
+    ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(30, 238); ctx.lineTo(870, 238); ctx.stroke()
+
+    // ── MUSEUM TAG row ──
+    ctx.font = '800 72px Arial Black, Impact, sans-serif'
+    ctx.fillStyle = '#2f7168'
+    ctx.textAlign = 'left'
+    ctx.fillText('MUSEUM TAG', 40, 328)
+
+    ctx.textAlign = 'right'
+    ctx.fillStyle = burn1Open ? '#2f7168' : '#c43426'
+    ctx.font = '900 72px Arial Black, Impact, sans-serif'
+    ctx.fillText(burn1Open ? 'OPEN' : 'CLOSED', 860, 328)
+
+    // Bottom rule
+    ctx.strokeStyle = '#d6b55b'
+    ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(30, 388); ctx.lineTo(870, 388); ctx.stroke()
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.needsUpdate = true
+    return tex
+  }, [burn2Remaining, burn1Open])
+
+  useEffect(() => () => { texture?.dispose() }, [texture])
+  if (!texture) return null
+
+  // Bigger frame, same position as original MuseumBackWallArt
   return (
-    <group position={[x, y, z]}>
-      {/* Drop shadow — exact copy from MuseumBackWallArt */}
-      <mesh position={[0.06, -0.048, -0.016]} scale={[1.66, 0.72, 0.014]}>
+    <group position={[ROOM_CENTER_X + 0.14, 1.5, wallFaceZ + 0.066]}>
+      {/* Drop shadow — renderOrder -2, always behind cursor */}
+      <mesh position={[0.07, -0.055, -0.018]} scale={[2.1, 0.84, 0.014]} renderOrder={-2}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryShadowMaterial()}
       </mesh>
-
-      {/* Outer frame — exact copy */}
+      {/* Walnut outer frame — same as MuseumBackWallArt */}
       <OutlineMesh
         position={[0, 0, 0]}
-        scale={[1.54, 0.66, 0.042]}
+        scale={[1.95, 0.76, 0.042]}
         outlineWidth={0.018}
         outlineColor="#17121f"
         geometry={<boxGeometry args={[1, 1, 1]} />}
         material={galleryFrameMaterial()}
       />
-
-      {/* Mat backing */}
-      <mesh position={[0, 0, 0.03]} scale={[1.35, 0.49, 0.018]}>
+      {/* Grey mat */}
+      <mesh position={[0, 0, 0.03]} scale={[1.76, 0.58, 0.018]} renderOrder={-2}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryMatMaterial()}
       </mesh>
-
-      {/* Cream content area */}
-      <mesh position={[0, 0, 0.048]} scale={[1.1, 0.36, 0.01]}>
+      {/* Cream content panel */}
+      <mesh position={[0, 0, 0.048]} scale={[1.62, 0.46, 0.012]} renderOrder={-2}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryCreamMaterial()}
       </mesh>
-
-      {/* ── BURNS LEFT header bar ── */}
-      <mesh position={[0, 0.13, 0.058]} scale={[1.06, 0.055, 0.008]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelWalnutMaterial()}
-      </mesh>
-      {/* "BURNS LEFT" label — two brass strips as abstract letterform hint */}
-      <mesh position={[-0.18, 0.13, 0.065]} scale={[0.28, 0.016, 0.006]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
-      </mesh>
-      <mesh position={[0.18, 0.13, 0.065]} scale={[0.28, 0.016, 0.006]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
-      </mesh>
-
-      {/* ── Divider line ── */}
-      <mesh position={[0, 0.065, 0.062]} scale={[1.0, 0.006, 0.006]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
-      </mesh>
-
-      {/* ── GOLD SEAL row ── teal block = label, colour block = count */}
-      {/* Label swatch */}
-      <mesh position={[-0.35, 0.0, 0.062]} scale={[0.32, 0.055, 0.01]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {galleryRustMaterial()}
-      </mesh>
-      {/* Count swatch — gold accent */}
-      <mesh position={[0.34, 0.0, 0.062]} scale={[0.14, 0.055, 0.01]}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshToonMaterial color={sealColor} gradientMap={getToonRampTexture()} />
-      </mesh>
-      {/* Count pips — one box per remaining slot */}
-      {Array.from({ length: 5 }, (_, i) => (
-        <mesh key={i} position={[0.18 + i * 0.038 - 0.076, 0.0, 0.068]} scale={[0.022, 0.038, 0.008]}>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshToonMaterial color={i < burn2Remaining ? '#d6b55b' : '#6e4a2a'} gradientMap={getToonRampTexture()} />
-        </mesh>
-      ))}
-
-      {/* ── Divider ── */}
-      <mesh position={[0, -0.065, 0.062]} scale={[1.0, 0.006, 0.006]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
-      </mesh>
-
-      {/* ── MUSEUM TAG row ── */}
-      <mesh position={[-0.28, -0.13, 0.062]} scale={[0.42, 0.055, 0.01]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {galleryTealMaterial()}
-      </mesh>
-      {/* Open/closed indicator */}
-      <mesh position={[0.36, -0.13, 0.062]} scale={[0.16, 0.055, 0.01]}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshToonMaterial color={tagColor} gradientMap={getToonRampTexture()} />
-      </mesh>
-      {/* Dot indicator */}
-      <mesh position={[0.21, -0.13, 0.068]} scale={[0.14, 0.14, 1]}>
-        <circleGeometry args={[1, 12]} />
-        <meshToonMaterial color={tagColor} gradientMap={getToonRampTexture()} />
-      </mesh>
-
-      {/* Bottom brass accent strip */}
-      <mesh position={[0, -0.195, 0.058]} scale={[1.06, 0.018, 0.008]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {mcmPanelBrassMaterial()}
+      {/* Canvas texture with text — renderOrder -1 */}
+      <mesh position={[0, 0, 0.058]} renderOrder={-1}>
+        <planeGeometry args={[1.55, 0.44]} />
+        <meshBasicMaterial map={texture} transparent toneMapped={false} depthWrite={false} />
       </mesh>
     </group>
   )
