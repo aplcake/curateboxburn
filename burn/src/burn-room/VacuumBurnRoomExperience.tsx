@@ -2033,7 +2033,7 @@ function InspectionCamera() {
 
   useEffect(() => {
     const narrow = size.width / Math.max(1, size.height) < 0.72
-    camera.position.set(narrow ? 1.14 : 1.22, narrow ? 5.86 : 5.18, narrow ? 13.4 : 10.35)
+    camera.position.set(narrow ? 1.14 : 1.45, narrow ? 6.4 : 6.1, narrow ? 15.0 : 12.5)
     camera.lookAt(...BOX_TARGET)
     camera.updateProjectionMatrix()
   }, [camera, size.height, size.width])
@@ -7996,7 +7996,7 @@ export function VacuumBurnRoomExperience({
     >
       <Canvas
         dpr={[1.5, 2]}
-        camera={{ fov: 41, position: [1.22, 5.18, 10.35], near: 0.1, far: 30 }}
+        camera={{ fov: 41, position: [1.45, 6.1, 12.5], near: 0.1, far: 30 }}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         style={{ cursor: 'none' }}
       >
