@@ -2982,6 +2982,20 @@ function McmStandingLamp({
 }
 
 
+function getDisplayTextCharacterWidth(character: string, size: number) {
+  const fontResolution = helvetikerBold.resolution || 1000
+  const glyph = helvetikerBold.glyphs?.[character]
+
+  if (glyph?.ha) return (glyph.ha / fontResolution) * size
+  if (character === ' ') return size * 0.52
+  if (character === '/') return size * 0.48
+  if (character === 'I') return size * 0.4
+  if (character === 'M' || character === 'W') return size * 0.92
+  if (/\d/.test(character)) return size * 0.68
+
+  return size * 0.74
+}
+
 function DisplayText3D({
   text,
   position,
@@ -2989,6 +3003,8 @@ function DisplayText3D({
   color,
   align = 'left',
   depth = 0.038,
+  letterSpacing = size * 0.2,
+  shadowColor = '#6f6258',
 }: {
   text: string
   position: readonly [number, number, number]
@@ -2996,43 +3012,65 @@ function DisplayText3D({
   color: string
   align?: 'left' | 'center' | 'right'
   depth?: number
+  letterSpacing?: number
+  shadowColor?: string
 }) {
-  const estimatedWidth = text.length * size * 0.64
+  const characters = Array.from(text)
+  const characterOffsets = characters.map((character, index) => {
+    const offset = characters
+      .slice(0, index)
+      .reduce((total, previousCharacter) => total + getDisplayTextCharacterWidth(previousCharacter, size) + letterSpacing, 0)
+
+    return { character, offset }
+  })
+  const estimatedWidth = Math.max(
+    0,
+    characterOffsets.reduce((total, { character }) => total + getDisplayTextCharacterWidth(character, size) + letterSpacing, 0) - letterSpacing,
+  )
   const xOffset = align === 'center' ? -estimatedWidth / 2 : align === 'right' ? -estimatedWidth : 0
 
   return (
     <group position={[position[0] + xOffset, position[1], position[2]]}>
-      <Text3D
-        font={helvetikerBold}
-        size={size}
-        height={depth}
-        curveSegments={3}
-        bevelEnabled
-        bevelThickness={depth * 0.22}
-        bevelSize={depth * 0.16}
-        bevelSegments={2}
-        position={[0.018, -0.018, -0.012]}
-      >
-        {text}
-        <meshBasicMaterial color="#17121f" />
-      </Text3D>
-      <Text3D
-        font={helvetikerBold}
-        size={size}
-        height={depth}
-        curveSegments={3}
-        bevelEnabled
-        bevelThickness={depth * 0.22}
-        bevelSize={depth * 0.16}
-        bevelSegments={2}
-        position={[0, 0, 0]}
-      >
-        {text}
-        <meshToonMaterial color={color} gradientMap={getToonRampTexture()} />
-      </Text3D>
+      {characterOffsets.map(({ character, offset }, index) => {
+        if (character === ' ') return null
+
+        return (
+          <group key={`display-text-${text}-${index}`} position={[offset, 0, 0]}>
+            <Text3D
+              font={helvetikerBold}
+              size={size}
+              height={depth}
+              curveSegments={3}
+              bevelEnabled
+              bevelThickness={depth * 0.22}
+              bevelSize={depth * 0.16}
+              bevelSegments={2}
+              position={[0.014, -0.014, -0.012]}
+            >
+              {character}
+              <meshBasicMaterial color={shadowColor} />
+            </Text3D>
+            <Text3D
+              font={helvetikerBold}
+              size={size}
+              height={depth}
+              curveSegments={3}
+              bevelEnabled
+              bevelThickness={depth * 0.22}
+              bevelSize={depth * 0.16}
+              bevelSegments={2}
+              position={[0, 0, 0]}
+            >
+              {character}
+              <meshToonMaterial color={color} gradientMap={getToonRampTexture()} />
+            </Text3D>
+          </group>
+        )
+      })}
     </group>
   )
 }
+
 
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const { burn2Remaining, burn1Open } = React.useContext(BurnStatusContext)
@@ -3040,7 +3078,7 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const tagStatus = burn1Open ? 'OPEN' : 'CLOSED'
 
   return (
-    <group position={[ROOM_CENTER_X + 0.18, 1.72, wallFaceZ + 0.092]} renderOrder={20}>
+    <group position={[ROOM_CENTER_X + 0.18, 1.9, wallFaceZ + 0.092]} renderOrder={20}>
       <mesh position={[0.09, -0.07, -0.045]} scale={[2.62, 1.08, 0.026]}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryShadowMaterial()}
