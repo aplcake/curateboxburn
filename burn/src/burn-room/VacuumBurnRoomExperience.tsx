@@ -2985,58 +2985,91 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const texture = useMemo(() => {
     if (typeof document === 'undefined') return null
     const canvas = document.createElement('canvas')
-    canvas.width = 640
-    canvas.height = 320
+    canvas.width = 680
+    canvas.height = 400
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
-    // Background
+    // Cream background
     ctx.fillStyle = '#f4ecd0'
-    ctx.fillRect(0, 0, 640, 320)
+    ctx.fillRect(0, 0, 680, 400)
 
-    // Top brass rail
-    ctx.fillStyle = '#d6b55b'
-    ctx.fillRect(24, 18, 592, 6)
+    // Outer decorative border
+    ctx.strokeStyle = '#5c3d2a'
+    ctx.lineWidth = 6
+    ctx.strokeRect(12, 12, 656, 376)
 
-    // Gold Seal row
-    ctx.font = 'bold 52px Arial Black, Georgia, serif'
+    // Inner decorative border
+    ctx.strokeStyle = '#d6b55b'
+    ctx.lineWidth = 3
+    ctx.strokeRect(22, 22, 636, 356)
+
+    // Corner ornaments (small diamonds)
+    const drawDiamond = (cx: number, cy: number, r: number) => {
+      ctx.fillStyle = '#d6b55b'
+      ctx.beginPath()
+      ctx.moveTo(cx, cy - r)
+      ctx.lineTo(cx + r, cy)
+      ctx.lineTo(cx, cy + r)
+      ctx.lineTo(cx - r, cy)
+      ctx.closePath()
+      ctx.fill()
+    }
+    drawDiamond(40, 40, 10)
+    drawDiamond(640, 40, 10)
+    drawDiamond(40, 360, 10)
+    drawDiamond(640, 360, 10)
+
+    // ── BURNS LEFT header ──
+    ctx.font = '900 28px Arial Black, Georgia, serif'
+    ctx.fillStyle = '#8a5a24'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('— BURNS LEFT —', 340, 62)
+
+    // Header divider with ornament
+    ctx.strokeStyle = '#d6b55b'
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(40, 84); ctx.lineTo(640, 84); ctx.stroke()
+    drawDiamond(340, 84, 6)
+
+    // ── Gold Seal row ──
+    ctx.font = 'bold 54px Arial Black, Georgia, serif'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = '#8a5a24'
     ctx.textAlign = 'left'
-    ctx.fillText('GOLD SEAL', 32, 90)
+    ctx.fillText('GOLD SEAL', 44, 152)
     ctx.textAlign = 'right'
-    ctx.fillStyle = burn2Remaining > 0 ? '#8a5a24' : '#c43426'
-    ctx.fillText(`${burn2Remaining} / 5`, 608, 90)
+    const seal2Color = burn2Remaining > 0 ? '#8a5a24' : '#c43426'
+    ctx.fillStyle = seal2Color
+    ctx.fillText(String(burn2Remaining) + ' / 5', 636, 152)
 
     // Mid divider
     ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(24, 126); ctx.lineTo(616, 126); ctx.stroke()
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(40, 200); ctx.lineTo(640, 200); ctx.stroke()
+    drawDiamond(340, 200, 5)
 
-    // Museum Tag row
-    ctx.font = 'bold 52px Arial Black, Georgia, serif'
+    // ── Museum Tag row ──
+    ctx.font = 'bold 54px Arial Black, Georgia, serif'
     ctx.fillStyle = '#2f7168'
     ctx.textAlign = 'left'
-    ctx.fillText('MUSEUM TAG', 32, 192)
+    ctx.fillText('MUSEUM TAG', 44, 268)
     ctx.textAlign = 'right'
     ctx.fillStyle = burn1Open ? '#2f7168' : '#c43426'
-    ctx.fillText(burn1Open ? 'OPEN' : 'CLOSED', 608, 192)
+    ctx.fillText(burn1Open ? 'OPEN' : 'CLOSED', 636, 268)
 
     // Bottom divider
     ctx.strokeStyle = '#d6b55b'
-    ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(24, 228); ctx.lineTo(616, 228); ctx.stroke()
+    ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(40, 314); ctx.lineTo(640, 314); ctx.stroke()
+    drawDiamond(340, 314, 5)
 
-    // Burns left label
-    ctx.font = '900 32px Arial Black, Georgia, serif'
-    ctx.fillStyle = '#5c4a2a'
+    // Small tagline
+    ctx.font = '700 22px Georgia, serif'
+    ctx.fillStyle = '#9a7a52'
     ctx.textAlign = 'center'
-    ctx.letterSpacing = '0.2em'
-    ctx.fillText('BURNS LEFT', 320, 278)
-
-    // Bottom brass rail
-    ctx.fillStyle = '#d6b55b'
-    ctx.fillRect(24, 296, 592, 6)
+    ctx.fillText('Museum of Based Art · Base Network', 340, 360)
 
     const tex = new THREE.CanvasTexture(canvas)
     tex.colorSpace = THREE.SRGBColorSpace
@@ -3048,42 +3081,57 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   if (!texture) return null
 
   const x = ROOM_CENTER_X + 0.14
-  const y = 1.52
+  const y = 1.56
   const z = wallFaceZ + 0.066
 
   return (
     <group position={[x, y, z]}>
-      {/* Drop shadow */}
-      <mesh position={[0.06, -0.052, -0.018]} scale={[1.72, 0.78, 0.014]}>
+      {/* Drop shadow — renderOrder 4 so cursor (95+) always on top */}
+      <mesh position={[0.07, -0.06, -0.02]} scale={[1.88, 0.92, 0.014]} renderOrder={4}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryShadowMaterial()}
       </mesh>
-      {/* Walnut outer frame */}
+      {/* Dark outer frame */}
       <OutlineMesh
         position={[0, 0, 0]}
-        scale={[1.58, 0.68, 0.044]}
-        outlineWidth={0.018}
+        scale={[1.72, 0.82, 0.048]}
+        outlineWidth={0.02}
         outlineColor="#17121f"
         geometry={<boxGeometry args={[1, 1, 1]} />}
         material={galleryFrameMaterial()}
       />
-      {/* Cream mat */}
-      <mesh position={[0, 0, 0.028]} scale={[1.4, 0.52, 0.018]}>
+      {/* Walnut inner backing */}
+      <mesh position={[0, 0, 0.026]} scale={[1.54, 0.65, 0.016]} renderOrder={5}>
+        <boxGeometry args={[1, 1, 1]} />
+        {mcmPanelWalnutMaterial()}
+      </mesh>
+      {/* Cream content panel */}
+      <mesh position={[0, 0, 0.036]} scale={[1.44, 0.58, 0.014]} renderOrder={6}>
         <boxGeometry args={[1, 1, 1]} />
         {galleryCreamMaterial()}
       </mesh>
       {/* Counter texture */}
-      <mesh position={[0, 0, 0.055]}>
-        <planeGeometry args={[1.28, 0.46]} />
+      <mesh position={[0, 0, 0.058]} renderOrder={7}>
+        <planeGeometry args={[1.38, 0.55]} />
         <meshBasicMaterial map={texture} transparent toneMapped={false} depthWrite={false} />
       </mesh>
-      {/* Top brass strip */}
-      <mesh position={[0, 0.31, 0.072]} scale={[1.26, 0.016, 0.01]}>
+      {/* Brass corner bolts */}
+      {([-0.74, 0.74] as const).map((bx) =>
+        ([-0.36, 0.36] as const).map((by) => (
+          <mesh key={`${bx}-${by}`} position={[bx, by, 0.072]}
+                rotation={[Math.PI / 2, 0, 0]} scale={[0.028, 0.028, 0.01]} renderOrder={8}>
+            <cylinderGeometry args={[1, 1, 1, 8]} />
+            {mcmPanelBrassMaterial()}
+          </mesh>
+        ))
+      )}
+      {/* Top brass rail */}
+      <mesh position={[0, 0.385, 0.072]} scale={[1.52, 0.014, 0.01]} renderOrder={8}>
         <boxGeometry args={[1, 1, 1]} />
         {mcmPanelBrassMaterial()}
       </mesh>
-      {/* Bottom brass strip */}
-      <mesh position={[0, -0.31, 0.072]} scale={[1.26, 0.016, 0.01]}>
+      {/* Bottom brass rail */}
+      <mesh position={[0, -0.385, 0.072]} scale={[1.52, 0.014, 0.01]} renderOrder={8}>
         <boxGeometry args={[1, 1, 1]} />
         {mcmPanelBrassMaterial()}
       </mesh>
