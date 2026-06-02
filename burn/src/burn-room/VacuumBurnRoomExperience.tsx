@@ -8312,5 +8312,6 @@ export function VacuumBurnRoomExperience({
         </button>
       ) : null}
     </div>
+    </BurnStatusContext.Provider>
   )
 }
