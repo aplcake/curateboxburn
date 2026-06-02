@@ -1,7 +1,7 @@
 const express   = require('express');
 const cors      = require('cors');
-const { createPublicClient, http, parseAbiItem } = require('viem');
-const { base }  = require('viem/chains');
+const { createPublicClient, createWalletClient, http, parseAbiItem, privateKeyToAccount } = require('viem');
+const { base, mainnet } = require('viem/chains');
 const { getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx } = require('./db');
 
 const app = express();
@@ -29,6 +29,64 @@ const DEAD_ADDRESS    = '0x000000000000000000000000000000000000dead';
 const MAX_BURN2       = 5;
 const ADMIN_KEY       = process.env.ADMIN_API_KEY;
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK_URL;
+
+// ─── Manifold auto-mint ──────────────────────────────────────────────────────
+// Set these env vars in Railway once you have the Manifold contract ready:
+//   MANIFOLD_CONTRACT_ADDRESS  — your Manifold ERC-721 contract address
+//   MANIFOLD_CONTRACT_CHAIN    — 'base' | 'mainnet' (default: 'base')
+//   MINTER_PRIVATE_KEY         — private key of wallet with admin role on Manifold
+//   MANIFOLD_RPC_URL           — optional custom RPC for the mint chain
+
+const MANIFOLD_CONTRACT = process.env.MANIFOLD_CONTRACT_ADDRESS || null;
+const MANIFOLD_CHAIN    = process.env.MANIFOLD_CONTRACT_CHAIN === 'mainnet' ? mainnet : base;
+const MINTER_KEY        = process.env.MINTER_PRIVATE_KEY || null;
+
+// Manifold ERC-721 Creator Core: mintBase(address to)
+const MANIFOLD_ABI = [
+  {
+    name: 'mintBase', type: 'function', stateMutability: 'nonpayable',
+    inputs:  [{ name: 'to', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+];
+
+// Lazily-created wallet client (only if env vars are set)
+let minterClient = null;
+function getMinterClient() {
+  if (minterClient) return minterClient;
+  if (!MINTER_KEY || !MANIFOLD_CONTRACT) return null;
+
+  const account = privateKeyToAccount(MINTER_KEY);
+  minterClient  = createWalletClient({
+    account,
+    chain:     MANIFOLD_CHAIN,
+    transport: http(process.env.MANIFOLD_RPC_URL || undefined),
+  });
+  return minterClient;
+}
+
+// Mint one NFT to `toAddress` via the Manifold contract.
+// Fires and forgets — burn recording is never blocked by mint failures.
+const mintManifoldNFT = async (toAddress, tier) => {
+  const client = getMinterClient();
+  if (!client || !MANIFOLD_CONTRACT) {
+    // Manifold not configured yet — skip silently
+    return;
+  }
+  try {
+    const hash = await client.writeContract({
+      address:      MANIFOLD_CONTRACT,
+      abi:          MANIFOLD_ABI,
+      functionName: 'mintBase',
+      args:         [toAddress],
+    });
+    console.log(`[manifold] minted to ${toAddress} (tier ${tier}) — tx ${hash}`);
+  } catch (err) {
+    // Log but don't throw — burn record already saved, mint can be retried manually
+    console.error(`[manifold] mint failed for ${toAddress}:`, err.message);
+  }
+};
+
 
 // ─── Viem client ────────────────────────────────────────────────────────────
 const client = createPublicClient({
@@ -129,6 +187,9 @@ app.post('/burns', async (req, res) => {
     return res.status(400).json({ error: 'On-chain verification failed' });
 
   recordBurn(verified.wallet, tier, txHash, verified.amount);
+
+  // Fire Manifold mint (non-blocking — burn is already recorded)
+  mintManifoldNFT(verified.wallet, tier).catch(() => {});
 
   const fresh = getBurnStatus();
   await sendDiscord(verified.wallet, tier, txHash, MAX_BURN2 - fresh.burn2Count);

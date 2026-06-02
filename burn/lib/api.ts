@@ -1,4 +1,13 @@
-const API = process.env.NEXT_PUBLIC_API_URL!;
+const API = process.env.NEXT_PUBLIC_API_URL;
+
+// Guard against missing env var — shows a clear error rather than a cryptic 404
+function apiUrl(path: string): string {
+  if (!API) {
+    console.error('[burn] NEXT_PUBLIC_API_URL is not set. Add it to Vercel env vars.');
+    throw new Error('API URL not configured');
+  }
+  return `${API}${path}`;
+}
 
 export type BurnStatus = {
   burn1Open:  boolean;
@@ -9,7 +18,7 @@ export type BurnStatus = {
 };
 
 export const getStatus = async (): Promise<BurnStatus> => {
-  const r = await fetch(`${API}/status`);
+  const r = await fetch(apiUrl('/status'));
   if (!r.ok) throw new Error('Failed to fetch status');
   return r.json();
 };
@@ -17,13 +26,13 @@ export const getStatus = async (): Promise<BurnStatus> => {
 export type WalletBurns = { burnedTier1: boolean; burnedTier2: boolean };
 
 export const getWalletBurns = async (address: string): Promise<WalletBurns> => {
-  const r = await fetch(`${API}/burns/wallet/${address}`);
+  const r = await fetch(apiUrl(`/burns/wallet/${address}`));
   if (!r.ok) return { burnedTier1: false, burnedTier2: false };
   return r.json();
 };
 
 export const recordBurn = async (txHash: string, tier: 1 | 2) => {
-  const r = await fetch(`${API}/burns`, {
+  const r = await fetch(apiUrl('/burns'), {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ txHash, tier }),
@@ -33,6 +42,7 @@ export const recordBurn = async (txHash: string, tier: 1 | 2) => {
   return data;
 };
 
+// Admin calls go through Next.js API routes (keeps ADMIN_API_KEY server-side)
 export const adminAction = async (action: 'close' | 'open') => {
   const r = await fetch(`/api/admin/burn1/${action}`, { method: 'POST' });
   const data = await r.json();
