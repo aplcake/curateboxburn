@@ -197,6 +197,7 @@ export function BurnExperience() {
         availableBoxCount={balance !== undefined ? Number(balance) : 0}
         soldOutItemIds={soldOutItemIds}
         showDevSoldOutSwitch={false}
+        showDevModeControls
         onConnectWallet={openConnectModal ?? (() => {})}
         onBurnRequested={handleBurnRequested}
       />

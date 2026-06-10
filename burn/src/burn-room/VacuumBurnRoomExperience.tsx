@@ -97,6 +97,7 @@ export type VacuumBurnRoomExperienceProps = {
   availableBoxCount?: number
   soldOutItemIds?: readonly BurnCatalogItemId[]
   showDevSoldOutSwitch?: boolean
+  showDevModeControls?: boolean
   onConnectWallet?: () => void | Promise<void>
   onBurnRequested?: (request: BurnRoomBurnRequest) => void | Promise<void>
   burn2Remaining?: number
@@ -8222,11 +8223,47 @@ function RitualRunController({
   return null
 }
 
+function DevModeButton({
+  label,
+  active = false,
+  onClick,
+}: {
+  label: string
+  active?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: '9px 10px',
+        border: '2px solid #17121f',
+        borderRadius: 5,
+        background: active ? '#c43426' : '#d6b55b',
+        boxShadow: '3px 3px 0 #17121f',
+        color: active ? '#fff0a8' : '#17121f',
+        cursor: 'none',
+        fontFamily: 'inherit',
+        fontSize: 12,
+        fontWeight: 900,
+        letterSpacing: 0.5,
+        textAlign: 'left',
+        textTransform: 'uppercase',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+
 export function VacuumBurnRoomExperience({
   walletConnected: controlledWalletConnected,
   availableBoxCount: controlledAvailableBoxCount,
   soldOutItemIds: controlledSoldOutItemIds,
   showDevSoldOutSwitch = true,
+  showDevModeControls,
   onConnectWallet,
   onBurnRequested,
   burn2Remaining = 5,
@@ -8237,6 +8274,7 @@ export function VacuumBurnRoomExperience({
   const activeBoxIndexRef = useRef(0)
   const carryoverSequencesRef = useRef<CarryoverBoxSequence[]>([])
   const pendingBurnItemRef = useRef<BurnCatalogItem | null>(null)
+  const pendingDevRunRef = useRef(false)
   const previousControlledAvailableBoxCount = useRef(controlledAvailableBoxCount)
   const orbitControlsRef = useRef<OrbitControlsImpl | null>(null)
   const boxDropReplayKey = 0
@@ -8245,20 +8283,29 @@ export function VacuumBurnRoomExperience({
   const [burnDetailItemId, setBurnDetailItemId] = useState<BurnCatalogItemId | null>(null)
   const [burnPickerOpen, setBurnPickerOpen] = useState(false)
   const [devSoldOut, setDevSoldOut] = useState(false)
+  const [devPanelOpen, setDevPanelOpen] = useState(false)
+  const [devControlsEnabled, setDevControlsEnabled] = useState(false)
+  const [devWalletConnectedOverride, setDevWalletConnectedOverride] = useState<boolean | null>(null)
+  const [devAvailableBoxCountOverride, setDevAvailableBoxCountOverride] = useState<number | null>(null)
+  const [devQueuedBurnItemId, setDevQueuedBurnItemId] = useState<BurnCatalogItemId | null>(null)
   const [runActive, setRunActive] = useState(false)
   const [runTargetCount, setRunTargetCount] = useState(0)
   const [burnedWalletBoxCount, setBurnedWalletBoxCount] = useState(0)
   const [runCompletedBurnCount, setRunCompletedBurnCount] = useState(0)
   const [runNonce, setRunNonce] = useState(0)
-  const walletConnected = controlledWalletConnected ?? demoWalletConnected
+  const fullDevMode = devControlsEnabled
+  const walletConnected = fullDevMode ? true : devWalletConnectedOverride ?? controlledWalletConnected ?? demoWalletConnected
+  const effectiveAvailableBoxCount = fullDevMode ? devAvailableBoxCountOverride ?? DEMO_WALLET_BOX_COUNT : devAvailableBoxCountOverride ?? controlledAvailableBoxCount
   const controlledVisibleBoxCount =
-    controlledAvailableBoxCount === undefined
+    effectiveAvailableBoxCount === undefined
       ? DEMO_WALLET_BOX_COUNT
-      : Math.max(0, Math.min(DEMO_WALLET_BOX_COUNT, Math.floor(controlledAvailableBoxCount)))
+      : Math.max(0, Math.min(DEMO_WALLET_BOX_COUNT, Math.floor(effectiveAvailableBoxCount)))
   const externalHiddenWalletBoxCount =
-    controlledAvailableBoxCount === undefined ? 0 : DEMO_WALLET_BOX_COUNT - controlledVisibleBoxCount
+    effectiveAvailableBoxCount === undefined ? 0 : DEMO_WALLET_BOX_COUNT - controlledVisibleBoxCount
   const committedHiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, externalHiddenWalletBoxCount + burnedWalletBoxCount)
-  const soldOutItemIds = controlledSoldOutItemIds ?? (devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : [])
+  const soldOutItemIds = fullDevMode
+    ? devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : []
+    : controlledSoldOutItemIds ?? (devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : [])
   const hiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, committedHiddenWalletBoxCount + runCompletedBurnCount)
   const availableWalletBoxCount = Math.max(0, DEMO_WALLET_BOX_COUNT - hiddenWalletBoxCount)
 
@@ -8269,13 +8316,30 @@ export function VacuumBurnRoomExperience({
     setRunCompletedBurnCount(0)
   }, [controlledAvailableBoxCount])
 
-  function startBurnRun(item: BurnCatalogItem) {
+  useEffect(() => {
+    if (showDevModeControls !== undefined) {
+      setDevControlsEnabled(showDevModeControls)
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    setDevControlsEnabled(
+      process.env.NODE_ENV !== 'production'
+      || params.has('dev')
+      || params.has('devmode')
+      || params.has('devMode'),
+    )
+  }, [showDevModeControls])
+
+  function startBurnRun(item: BurnCatalogItem, { ignoreAvailability = false }: { ignoreAvailability?: boolean } = {}) {
     const count = item.boxCost
     const remainingBoxes = Math.max(0, availableWalletBoxCount)
-    if (count <= 0 || count > remainingBoxes) return
+    const forceAnimationOnly = fullDevMode || ignoreAvailability
+    if (count <= 0 || (!forceAnimationOnly && count > remainingBoxes)) return
 
-    const targetCount = count
+    const targetCount = Math.min(DEMO_WALLET_BOX_COUNT, count)
     pendingBurnItemRef.current = item
+    pendingDevRunRef.current = forceAnimationOnly
     activeBoxIndexRef.current = committedHiddenWalletBoxCount
     carryoverSequencesRef.current = []
     runtime.current.swallowCycles = 0
@@ -8287,6 +8351,49 @@ export function VacuumBurnRoomExperience({
     dropSequenceStart.current = null
     setRunNonce((nonce) => nonce + 1)
   }
+
+  function resetDevAnimationState({ walletConnected: nextWalletConnected = true }: { walletConnected?: boolean } = {}) {
+    pendingBurnItemRef.current = null
+    pendingDevRunRef.current = false
+    activeBoxIndexRef.current = 0
+    carryoverSequencesRef.current = []
+    runtime.current.swallowCycles = 0
+    runtime.current.gulpFlow = 0
+    runtime.current.gulpAge = 9
+    dropSequenceStart.current = null
+    setDevAvailableBoxCountOverride(DEMO_WALLET_BOX_COUNT)
+    setDevWalletConnectedOverride(nextWalletConnected)
+    setBurnedWalletBoxCount(0)
+    setRunCompletedBurnCount(0)
+    setRunTargetCount(0)
+    setRunActive(false)
+    setBurnDetailItemId(null)
+    setBurnPickerOpen(false)
+  }
+
+  function replayDevCrateDrop() {
+    resetDevAnimationState({ walletConnected: false })
+    window.setTimeout(() => {
+      setDevWalletConnectedOverride(true)
+    }, 90)
+  }
+
+  function queueDevBurnRun(itemId: BurnCatalogItemId) {
+    resetDevAnimationState({ walletConnected: true })
+    setSelectedBurnItemId(itemId)
+    setDevQueuedBurnItemId(itemId)
+  }
+
+  useEffect(() => {
+    if (devQueuedBurnItemId === null) return
+    if (devWalletConnectedOverride !== true || devAvailableBoxCountOverride !== DEMO_WALLET_BOX_COUNT) return
+
+    pendingDevRunRef.current = true
+    startBurnRun(getBurnCatalogItem(devQueuedBurnItemId), { ignoreAvailability: true })
+    setDevQueuedBurnItemId(null)
+  }, [devAvailableBoxCountOverride, devQueuedBurnItemId, devWalletConnectedOverride])
+
+  const showDevControls = showDevSoldOutSwitch || devControlsEnabled
 
   return (
     <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open }}>
@@ -8324,11 +8431,13 @@ export function VacuumBurnRoomExperience({
           }}
           onRunComplete={() => {
             const completedItem = pendingBurnItemRef.current
+            const completedDevRun = pendingDevRunRef.current
             setBurnedWalletBoxCount((currentCount) => Math.min(DEMO_WALLET_BOX_COUNT, currentCount + runTargetCount))
             setRunCompletedBurnCount(0)
             setRunActive(false)
             pendingBurnItemRef.current = null
-            if (completedItem && onBurnRequested) {
+            pendingDevRunRef.current = false
+            if (completedItem && onBurnRequested && !completedDevRun) {
               void onBurnRequested({
                 source: 'vacuum-head-box-ritual',
                 boxId: completedItem.id,
@@ -8465,34 +8574,70 @@ export function VacuumBurnRoomExperience({
           maxAzimuthAngle={0.5}
         />
       </Canvas>
-      {showDevSoldOutSwitch ? (
-        <button
-          type="button"
-          aria-pressed={devSoldOut}
-          onClick={() => {
-            setDevSoldOut((soldOut) => !soldOut)
-          }}
-          style={{
-            position: 'fixed',
-            top: 18,
-            right: 18,
-            zIndex: 10,
-            padding: '10px 16px',
-            border: '3px solid #17121f',
-            borderRadius: 6,
-            background: devSoldOut ? '#c43426' : '#d4dde0',
-            boxShadow: '4px 4px 0 #17121f',
-            color: devSoldOut ? '#fff0a8' : '#17121f',
-            cursor: 'none',
-            fontFamily: 'inherit',
-            fontSize: 14,
-            fontWeight: 800,
-            letterSpacing: 0,
-            textTransform: 'uppercase',
-          }}
-        >
-          Dev sold out: {devSoldOut ? 'on' : 'off'}
-        </button>
+      {showDevControls ? (
+        <>
+          <button
+            type="button"
+            aria-expanded={devPanelOpen}
+            onClick={() => {
+              setDevPanelOpen((open) => !open)
+            }}
+            style={{
+              position: 'fixed',
+              top: 18,
+              right: 18,
+              zIndex: 10,
+              padding: '10px 16px',
+              border: '3px solid #17121f',
+              borderRadius: 6,
+              background: devPanelOpen ? '#d6b55b' : '#d4dde0',
+              boxShadow: '4px 4px 0 #17121f',
+              color: '#17121f',
+              cursor: 'none',
+              fontFamily: 'inherit',
+              fontSize: 14,
+              fontWeight: 900,
+              letterSpacing: 0,
+              textTransform: 'uppercase',
+            }}
+          >
+            Dev mode
+          </button>
+          {devPanelOpen ? (
+            <div
+              style={{
+                position: 'fixed',
+                top: 66,
+                right: 18,
+                zIndex: 10,
+                display: 'grid',
+                gap: 9,
+                width: 220,
+                padding: 12,
+                border: '3px solid #17121f',
+                borderRadius: 8,
+                background: '#efe5c7',
+                boxShadow: '5px 5px 0 #17121f',
+                color: '#17121f',
+                fontFamily: 'inherit',
+              }}
+            >
+              <DevModeButton label="Drop crates" onClick={replayDevCrateDrop} />
+              <DevModeButton label="Test burn 1" onClick={() => queueDevBurnRun('archive-tag')} />
+              <DevModeButton label="Test burn 2" onClick={() => queueDevBurnRun('gilded-seal')} />
+              <DevModeButton label="Reset crates" onClick={() => resetDevAnimationState({ walletConnected: true })} />
+              {showDevSoldOutSwitch ? (
+                <DevModeButton
+                  label={`Sold out: ${devSoldOut ? 'on' : 'off'}`}
+                  active={devSoldOut}
+                  onClick={() => {
+                    setDevSoldOut((soldOut) => !soldOut)
+                  }}
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
     </BurnStatusContext.Provider>
