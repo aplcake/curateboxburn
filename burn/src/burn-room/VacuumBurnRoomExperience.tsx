@@ -3074,7 +3074,7 @@ function DisplayText3D({
 
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const { burn2Remaining, burn1Open } = React.useContext(BurnStatusContext)
-  const goldSealCount = `${burn2Remaining} / 7`
+  const goldSealCount = `${burn2Remaining} / 5`
   const tagStatus = burn1Open ? 'OPEN' : 'CLOSED'
 
   return (
