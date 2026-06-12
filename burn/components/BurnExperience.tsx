@@ -199,7 +199,7 @@ export function BurnExperience() {
         showDevSoldOutSwitch={false}
         onConnectWallet={openConnectModal ?? (() => {})}
         onBurnRequested={handleBurnRequested}
-        burn2Remaining={status ? 7 - status.burn2Count : 7}
+        burn2Remaining={status ? 5 - status.burn2Count : 5}
         burn1Open={status?.burn1Open ?? true}
       />
 

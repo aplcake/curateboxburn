@@ -2,7 +2,7 @@ const express   = require('express');
 const cors      = require('cors');
 const { createPublicClient, createWalletClient, http, parseAbiItem, privateKeyToAccount } = require('viem');
 const { base, mainnet } = require('viem/chains');
-const { getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx, getWalletBurns } = require('./db');
+const { getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx } = require('./db');
 
 const app = express();
 app.use(express.json());
@@ -41,12 +41,17 @@ const MANIFOLD_CONTRACT = process.env.MANIFOLD_CONTRACT_ADDRESS || null;
 const MANIFOLD_CHAIN    = process.env.MANIFOLD_CONTRACT_CHAIN === 'mainnet' ? mainnet : base;
 const MINTER_KEY        = process.env.MINTER_PRIVATE_KEY || null;
 
-// Manifold ERC-721 Creator Core: mintBase(address to)
+// Manifold ERC-1155 Creator Core: mintBaseExisting — mints token ID 1 to each burner
+const MANIFOLD_TOKEN_ID = BigInt(process.env.MANIFOLD_TOKEN_ID || '1');
 const MANIFOLD_ABI = [
   {
-    name: 'mintBase', type: 'function', stateMutability: 'nonpayable',
-    inputs:  [{ name: 'to', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
+    name: 'mintBaseExisting', type: 'function', stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'to',        type: 'address[]' },
+      { name: 'tokenIds',  type: 'uint256[]' },
+      { name: 'amounts',   type: 'uint256[]' },
+    ],
+    outputs: [],
   },
 ];
 
@@ -77,7 +82,7 @@ const mintManifoldNFT = async (toAddress, tier) => {
     const hash = await client.writeContract({
       address:      MANIFOLD_CONTRACT,
       abi:          MANIFOLD_ABI,
-      functionName: 'mintBase',
+      functionName: 'mintBaseExisting',
       args:         [toAddress],
     });
     console.log(`[manifold] minted to ${toAddress} (tier ${tier}) — tx ${hash}`);
@@ -105,7 +110,11 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-const verifyBurnTx = async (txHash, expectedTier) => {
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+const verifyBurnTx = async (txHash, expectedTier, attempt = 0) => {
+  const MAX_ATTEMPTS = 5;
+  const DELAY_MS     = 3000;
   try {
     const receipt = await client.getTransactionReceipt({ hash: txHash });
     if (!receipt || receipt.status !== 'success') return null;
@@ -131,6 +140,11 @@ const verifyBurnTx = async (txHash, expectedTier) => {
 
     return { wallet: log.args.from, amount };
   } catch (err) {
+    if (attempt < MAX_ATTEMPTS && err.message?.includes('block range')) {
+      console.log(`[verify] RPC not ready, retrying in ${DELAY_MS}ms (attempt ${attempt + 1}/${MAX_ATTEMPTS})`);
+      await sleep(DELAY_MS);
+      return verifyBurnTx(txHash, expectedTier, attempt + 1);
+    }
     console.error('TX verify error:', err.message);
     return null;
   }
@@ -160,7 +174,7 @@ app.get('/status', (_req, res) => res.json(getBurnStatus()));
 // Public: check what a specific wallet has already burned
 app.get('/burns/wallet/:address', (req, res) => {
   const address = req.params.address.toLowerCase();
-  const burns = getWalletBurns(address);
+  const burns = db.prepare('SELECT tier FROM burns WHERE wallet = ?').all(address);
   res.json({
     burnedTier1: burns.some(b => b.tier === 1),
     burnedTier2: burns.some(b => b.tier === 2),
@@ -189,9 +203,7 @@ app.post('/burns', async (req, res) => {
   recordBurn(verified.wallet, tier, txHash, verified.amount);
 
   // Fire Manifold mint (non-blocking — burn is already recorded)
-  mintManifoldNFT(verified.wallet, tier)
-      .then(() => console.log(`[manifold] mint queued for ${verified.wallet}`))
-      .catch(err => console.error(`[manifold] mint failed for ${verified.wallet}`, err));
+  mintManifoldNFT(verified.wallet, tier).catch(() => {});
 
   const fresh = getBurnStatus();
   await sendDiscord(verified.wallet, tier, txHash, MAX_BURN2 - fresh.burn2Count);
@@ -205,6 +217,24 @@ app.post('/admin/burn1/open',   requireAdmin, (_req, res) => { setBurn1Open(true
 
 // Admin: list all burns (JSON)
 app.get('/admin/burns', requireAdmin, (_req, res) => res.json(getAllBurns()));
+
+
+// Admin: remint airdrop to all recorded burns (for burns that happened before Manifold was wired)
+app.post('/admin/remint', requireAdmin, async (req, res) => {
+  const burns = getAllBurns();
+  const results = [];
+  for (const burn of burns) {
+    try {
+      await mintManifoldNFT(burn.wallet, burn.tier);
+      results.push({ wallet: burn.wallet, tier: burn.tier, status: 'minted' });
+      console.log(`[remint] minted to ${burn.wallet}`);
+    } catch (err) {
+      results.push({ wallet: burn.wallet, tier: burn.tier, status: 'failed', error: err.message });
+      console.error(`[remint] failed for ${burn.wallet}:`, err.message);
+    }
+  }
+  res.json({ success: true, results });
+});
 
 // Admin: download CSV
 app.get('/admin/burns/export', requireAdmin, (_req, res) => {

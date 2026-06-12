@@ -16,12 +16,29 @@ export function AdminPanel() {
   const [status,  setStatus]  = useState<BurnStatus | null>(null);
   const [loading, setLoading] = useState('');
   const [msg,     setMsg]     = useState('');
+  const [reminting, setReminting] = useState(false);
 
   const refresh = async () => { try { setStatus(await getStatus()); } catch {} };
   useEffect(() => { refresh(); }, []);
 
   if (!address)  return <p className="text-white/30 text-sm">Connect wallet to access admin.</p>;
   if (!isAdmin)  return <p className="text-red-500/60 text-sm">Not an admin wallet.</p>;
+
+  const remintAll = async () => {
+    setReminting(true);
+    setMsg('');
+    try {
+      const r = await fetch('/api/admin/remint', { method: 'POST' });
+      const data = await r.json();
+      const ok  = data.results?.filter((x: { status: string }) => x.status === 'minted').length ?? 0;
+      const fail = data.results?.filter((x: { status: string }) => x.status === 'failed').length ?? 0;
+      setMsg(`Remint done: ${ok} minted, ${fail} failed`);
+    } catch (e: unknown) {
+      setMsg((e as Error).message);
+    } finally {
+      setReminting(false);
+    }
+  };
 
   const toggle = async (action: 'open' | 'close') => {
     setLoading(action);
@@ -94,6 +111,16 @@ export function AdminPanel() {
         onClick={downloadCSV}
       >
         ↓ EXPORT BURNS CSV
+      </button>
+
+      {/* Remint airdrop to all recorded burns */}
+      <button
+        className="w-full py-3 border border-yellow-700/50 text-yellow-400 text-xs tracking-widest
+                   hover:bg-yellow-900/20 transition disabled:opacity-40"
+        disabled={reminting}
+        onClick={remintAll}
+      >
+        {reminting ? 'MINTING…' : '🔥 REMINT AIRDROP TO ALL BURNS'}
       </button>
 
       {msg && <p className="text-xs text-center text-white/50">{msg}</p>}

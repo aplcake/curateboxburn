@@ -24,9 +24,30 @@ db.exec(`
   INSERT OR IGNORE INTO config (key, value) VALUES ('burn2_count', '0');
 `);
 
-const getConfig = (key) =>
-  db.prepare('SELECT value FROM config WHERE key = ?').get(key)?.value;
+// Seed the two confirmed on-chain burns for raffle record-keeping.
+// These do NOT increment burn2_count — counter stays fresh at 5/5.
+const CONFIRMED_BURNS = [
+  {
+    wallet: '0x7ea0ccda3930abca0e6cb57f98e30ebcb708dd60',
+    tier: 2,
+    tx_hash: '0xadd5fb39a08cd4c009773f001ceabd91e65c15cd17599f1a4d78938202de6a68',
+    amount: 2,
+  },
+  {
+    wallet: '0x3c785af6a41490c24d6910bfa9baffabd1dd2f21',
+    tier: 2,
+    tx_hash: '0x571f88342d2884c13a128b6a7262d2a82b69390453e7d5143c6ebf6e22273d37',
+    amount: 2,
+  },
+];
 
+const insertSeed = db.prepare(`INSERT OR IGNORE INTO burns (wallet, tier, tx_hash, amount) VALUES (?, ?, ?, ?)`);
+for (const b of CONFIRMED_BURNS) {
+  const r = insertSeed.run(b.wallet, b.tier, b.tx_hash, b.amount);
+  if (r.changes > 0) console.log(`[db] seeded burn: ${b.wallet}`);
+}
+
+const getConfig = (key) => db.prepare('SELECT value FROM config WHERE key = ?').get(key)?.value;
 const setConfig = db.prepare('UPDATE config SET value = ? WHERE key = ?');
 
 const getBurnStatus = () => {
@@ -43,7 +64,6 @@ const getBurnStatus = () => {
 const recordBurn = (wallet, tier, txHash, amount) => {
   db.prepare('INSERT INTO burns (wallet, tier, tx_hash, amount) VALUES (?, ?, ?, ?)')
     .run(wallet.toLowerCase(), tier, txHash.toLowerCase(), amount);
-
   if (tier === 2) {
     const cur = parseInt(getConfig('burn2_count') || '0');
     setConfig.run(String(cur + 1), 'burn2_count');
@@ -51,14 +71,7 @@ const recordBurn = (wallet, tier, txHash, amount) => {
 };
 
 const setBurn1Open = (open) => setConfig.run(open ? 'true' : 'false', 'burn1_open');
+const getAllBurns  = () => db.prepare('SELECT * FROM burns ORDER BY created_at ASC').all();
+const hasTx       = (txHash) => !!db.prepare('SELECT id FROM burns WHERE tx_hash = ?').get(txHash.toLowerCase());
 
-const getAllBurns = () =>
-  db.prepare('SELECT * FROM burns ORDER BY created_at ASC').all();
-
-const hasTx = (txHash) =>
-  !!db.prepare('SELECT id FROM burns WHERE tx_hash = ?').get(txHash.toLowerCase());
-
-const getWalletBurns = (wallet) =>
-  db.prepare('SELECT tier FROM burns WHERE wallet = ?').all(wallet.toLowerCase());
-
-module.exports = { getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx, getWalletBurns };
+module.exports = { db, getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx };
