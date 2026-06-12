@@ -201,7 +201,6 @@ export function BurnExperience() {
         onBurnRequested={handleBurnRequested}
         burn2Remaining={status ? 7 - status.burn2Count : 7}
         burn1Open={status?.burn1Open ?? true}
-        onExit={handleExit}
       />
 
       {/* TX status overlay — fixed so it sits above the fixed canvas */}
@@ -308,6 +307,17 @@ export function BurnExperience() {
           </div>
         )}
       </div>
+
+      {/* Back to museum — top left */}
+      <a href="https://museumofbased.art"
+         className="fixed top-4 left-4 z-50 flex items-center gap-2
+                    bg-[#17121f]/70 hover:bg-[#17121f]/90 backdrop-blur-sm
+                    border border-[#d6b55b]/40 hover:border-[#d6b55b]/80
+                    text-[#d6b55b] text-[11px] font-mono tracking-widest
+                    px-3 py-2 transition-all shadow-[2px_2px_0_#17121f]"
+      >
+        ← MUSEUM
+      </a>
 
       {/* Discreet admin link */}
       <a href="/admin"
