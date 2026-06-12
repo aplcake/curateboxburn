@@ -1,6 +1,7 @@
 const express   = require('express');
 const cors      = require('cors');
-const { createPublicClient, createWalletClient, http, parseAbiItem, privateKeyToAccount } = require('viem');
+const { createPublicClient, createWalletClient, http, parseAbiItem } = require('viem');
+const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
 const { db, getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx } = require('./db');
 
