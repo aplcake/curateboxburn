@@ -78,7 +78,7 @@ export function AdminPanel() {
           <div className="stat-box col-span-2 flex justify-between items-center">
             <span>BURN 2 STATUS</span>
             <span className={status.burn2Open ? 'text-green-400' : 'text-red-400'}>
-              {status.burn2Open ? `● OPEN — ${7 - status.burn2Count}/7 left` : '● FULL'}
+              {status.burn2Open ? `● OPEN — ${5 - status.burn2Count}/5 left` : '● FULL'}
             </span>
           </div>
         </div>
