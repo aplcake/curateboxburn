@@ -1,6 +1,7 @@
 const express   = require('express');
 const cors      = require('cors');
-const { createPublicClient, createWalletClient, http, parseAbiItem, privateKeyToAccount } = require('viem');
+const { createPublicClient, createWalletClient, http, parseAbiItem } = require('viem');
+const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
 const { db, getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx } = require('./db');
 
@@ -72,6 +73,8 @@ function getMinterClient() {
 
 // Mint one NFT to `toAddress` via the Manifold contract.
 // Fires and forgets — burn recording is never blocked by mint failures.
+let nextNonce = null;
+
 const mintManifoldNFT = async (toAddress, tier) => {
   const client = getMinterClient();
   if (!client || !MANIFOLD_CONTRACT) {
@@ -79,12 +82,19 @@ const mintManifoldNFT = async (toAddress, tier) => {
     return;
   }
   // mintBaseExisting(address[] to, uint256[] tokenIds, uint256[] amounts)
+  const nonce = nextNonce ?? await client.getTransactionCount({ address: client.account.address });
+  nextNonce = nonce + 1;
+
   const hash = await client.writeContract({
     address:      MANIFOLD_CONTRACT,
     abi:          MANIFOLD_ABI,
     functionName: 'mintBaseExisting',
     args:         [[toAddress], [MANIFOLD_TOKEN_ID], [1n]],
+    nonce,
   });
+
+  await client.waitForTransactionReceipt({ hash });
+
   console.log(`[manifold] minted token #${MANIFOLD_TOKEN_ID} to ${toAddress} (tier ${tier}) — tx ${hash}`);
 };
 
