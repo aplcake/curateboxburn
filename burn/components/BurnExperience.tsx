@@ -199,6 +199,9 @@ export function BurnExperience() {
         showDevSoldOutSwitch={false}
         onConnectWallet={openConnectModal ?? (() => {})}
         onBurnRequested={handleBurnRequested}
+        burn2Remaining={status ? 7 - status.burn2Count : 7}
+        burn1Open={status?.burn1Open ?? true}
+        onExit={handleExit}
       />
 
       {/* TX status overlay — fixed so it sits above the fixed canvas */}

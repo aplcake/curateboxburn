@@ -129,7 +129,7 @@ export function BurnInterface() {
   const reset = () => { setPhase('idle'); setTxHash(undefined); setActiveTier(null); setMessage(''); };
 
   const wrongChain   = !!address && chainId !== base.id;
-  const burn2Slots   = status ? 5 - status.burn2Count : 5;
+  const burn2Slots   = status ? 7 - status.burn2Count : 7;
   const burn2Avail   = !!status?.burn2Open;
   const burn1Avail   = !!status?.burn1Open;
 
