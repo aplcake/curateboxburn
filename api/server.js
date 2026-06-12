@@ -61,7 +61,7 @@ function getMinterClient() {
   if (minterClient) return minterClient;
   if (!MINTER_KEY || !MANIFOLD_CONTRACT) return null;
 
-  const account = privateKeyToAccount(MINTER_KEY);
+  const account = privateKeyToAccount(MINTER_KEY.startsWith('0x') ? MINTER_KEY : '0x' + MINTER_KEY);
   minterClient  = createWalletClient({
     account,
     chain:     MANIFOLD_CHAIN,
@@ -75,21 +75,17 @@ function getMinterClient() {
 const mintManifoldNFT = async (toAddress, tier) => {
   const client = getMinterClient();
   if (!client || !MANIFOLD_CONTRACT) {
-    // Manifold not configured yet — skip silently
+    console.log(`[manifold] skipped — contract: ${MANIFOLD_CONTRACT}, key set: ${!!MINTER_KEY}`);
     return;
   }
-  try {
-    const hash = await client.writeContract({
-      address:      MANIFOLD_CONTRACT,
-      abi:          MANIFOLD_ABI,
-      functionName: 'mintBaseExisting',
-      args:         [toAddress],
-    });
-    console.log(`[manifold] minted to ${toAddress} (tier ${tier}) — tx ${hash}`);
-  } catch (err) {
-    // Log but don't throw — burn record already saved, mint can be retried manually
-    console.error(`[manifold] mint failed for ${toAddress}:`, err.message);
-  }
+  // mintBaseExisting(address[] to, uint256[] tokenIds, uint256[] amounts)
+  const hash = await client.writeContract({
+    address:      MANIFOLD_CONTRACT,
+    abi:          MANIFOLD_ABI,
+    functionName: 'mintBaseExisting',
+    args:         [[toAddress], [MANIFOLD_TOKEN_ID], [1n]],
+  });
+  console.log(`[manifold] minted token #${MANIFOLD_TOKEN_ID} to ${toAddress} (tier ${tier}) — tx ${hash}`);
 };
 
 
