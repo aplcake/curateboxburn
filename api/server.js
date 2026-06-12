@@ -234,6 +234,37 @@ app.post('/admin/remint', requireAdmin, async (req, res) => {
   res.json({ success: true, results });
 });
 
+// Admin: remint a single wallet
+app.post('/admin/remint/:wallet', requireAdmin, async (req, res) => {
+  const wallet = req.params.wallet.toLowerCase();
+
+  const burn = getAllBurns().find(
+    b => b.wallet.toLowerCase() === wallet
+  );
+
+  if (!burn) {
+    return res.status(404).json({ error: 'Wallet not found' });
+  }
+
+  try {
+    await mintManifoldNFT(burn.wallet, burn.tier);
+
+    console.log(`[manual-remint] minted to ${burn.wallet}`);
+
+    res.json({
+      success: true,
+      wallet: burn.wallet
+    });
+  } catch (err) {
+    console.error(`[manual-remint] failed for ${burn.wallet}:`, err.message);
+
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 // Admin: download CSV
 app.get('/admin/burns/export', requireAdmin, (_req, res) => {
   const burns = getAllBurns();
