@@ -2,7 +2,7 @@ const express   = require('express');
 const cors      = require('cors');
 const { createPublicClient, createWalletClient, http, parseAbiItem, privateKeyToAccount } = require('viem');
 const { base, mainnet } = require('viem/chains');
-const { getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx } = require('./db');
+const { getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx, getWalletBurns } = require('./db');
 
 const app = express();
 app.use(express.json());
@@ -160,7 +160,7 @@ app.get('/status', (_req, res) => res.json(getBurnStatus()));
 // Public: check what a specific wallet has already burned
 app.get('/burns/wallet/:address', (req, res) => {
   const address = req.params.address.toLowerCase();
-  const burns = db.prepare('SELECT tier FROM burns WHERE wallet = ?').all(address);
+  const burns = getWalletBurns(address);
   res.json({
     burnedTier1: burns.some(b => b.tier === 1),
     burnedTier2: burns.some(b => b.tier === 2),
@@ -189,7 +189,9 @@ app.post('/burns', async (req, res) => {
   recordBurn(verified.wallet, tier, txHash, verified.amount);
 
   // Fire Manifold mint (non-blocking — burn is already recorded)
-  mintManifoldNFT(verified.wallet, tier).catch(() => {});
+  mintManifoldNFT(verified.wallet, tier)
+      .then(() => console.log(`[manifold] mint queued for ${verified.wallet}`))
+      .catch(err => console.error(`[manifold] mint failed for ${verified.wallet}`, err));
 
   const fresh = getBurnStatus();
   await sendDiscord(verified.wallet, tier, txHash, MAX_BURN2 - fresh.burn2Count);

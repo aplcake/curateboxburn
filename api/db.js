@@ -58,4 +58,7 @@ const getAllBurns = () =>
 const hasTx = (txHash) =>
   !!db.prepare('SELECT id FROM burns WHERE tx_hash = ?').get(txHash.toLowerCase());
 
-module.exports = { getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx };
+const getWalletBurns = (wallet) =>
+  db.prepare('SELECT tier FROM burns WHERE wallet = ?').all(wallet.toLowerCase());
+
+module.exports = { getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx, getWalletBurns };
