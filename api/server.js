@@ -73,8 +73,6 @@ function getMinterClient() {
 
 // Mint one NFT to `toAddress` via the Manifold contract.
 // Fires and forgets — burn recording is never blocked by mint failures.
-let nextNonce = null;
-
 const mintManifoldNFT = async (toAddress, tier) => {
   const client = getMinterClient();
   if (!client || !MANIFOLD_CONTRACT) {
@@ -82,18 +80,12 @@ const mintManifoldNFT = async (toAddress, tier) => {
     return;
   }
   // mintBaseExisting(address[] to, uint256[] tokenIds, uint256[] amounts)
-  const nonce = nextNonce ?? await client.getTransactionCount({ address: client.account.address });
-  nextNonce = nonce + 1;
-
   const hash = await client.writeContract({
     address:      MANIFOLD_CONTRACT,
     abi:          MANIFOLD_ABI,
     functionName: 'mintBaseExisting',
     args:         [[toAddress], [MANIFOLD_TOKEN_ID], [1n]],
-    nonce,
   });
-
-  await client.waitForTransactionReceipt({ hash });
 
   console.log(`[manifold] minted token #${MANIFOLD_TOKEN_ID} to ${toAddress} (tier ${tier}) — tx ${hash}`);
 };
@@ -240,34 +232,6 @@ app.post('/admin/remint', requireAdmin, async (req, res) => {
     }
   }
   res.json({ success: true, results });
-});
-
-
-
-// Admin: remint a single wallet
-app.post('/admin/remint/:wallet', requireAdmin, async (req, res) => {
-  const wallet = req.params.wallet.toLowerCase();
-
-  const burn = getAllBurns().find(
-    b => b.wallet.toLowerCase() === wallet
-  );
-
-  if (!burn) {
-    return res.status(404).json({ error: 'Wallet not found' });
-  }
-
-  try {
-    await mintManifoldNFT(burn.wallet, burn.tier);
-    console.log(`[manual-remint] minted to ${burn.wallet}`);
-
-    res.json({
-      success: true,
-      wallet: burn.wallet
-    });
-  } catch (err) {
-    console.error(`[manual-remint] failed for ${burn.wallet}:`, err.message);
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // Admin: download CSV
