@@ -279,7 +279,9 @@ export function BurnExperience() {
         </div>
       )}
 
-      {/* Wallet overlay — top right, DOM-based for full wallet management */}
+      {/* Wallet overlay — top right, DOM-based for full wallet management.
+          Hidden entirely during Coming Soon — nothing to connect a wallet for yet. */}
+      {(!status || status.eventLive) && (
       <div className="fixed top-4 right-4 z-[70] flex flex-col items-end gap-2">
         {!address ? (
           <button
@@ -322,6 +324,7 @@ export function BurnExperience() {
           </div>
         )}
       </div>
+      )}
 
       {/* Back to museum — top left */}
       <a href="https://museumofbased.art"

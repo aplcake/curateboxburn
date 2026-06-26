@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount }           from 'wagmi';
+import { useConnectModal }      from '@rainbow-me/rainbowkit';
 import {
   adminAction, downloadCSV, getStatus, setEventLive,
   getSlideshow, saveSlideshow, type BurnStatus, type SlideshowSaveResult,
@@ -14,6 +15,7 @@ const ADMIN_WALLETS = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || '')
 
 export function AdminPanel() {
   const { address } = useAccount();
+  const { openConnectModal } = useConnectModal();
   const isAdmin     = !!address && ADMIN_WALLETS.includes(address.toLowerCase());
 
   const [status,  setStatus]  = useState<BurnStatus | null>(null);
@@ -34,7 +36,21 @@ export function AdminPanel() {
       .catch(() => {});
   }, []);
 
-  if (!address)  return <p className="text-white/30 text-sm">Connect wallet to access admin.</p>;
+  if (!address) {
+    return (
+      <div className="flex flex-col items-center gap-4">
+        <p className="text-white/30 text-sm">Connect wallet to access admin.</p>
+        <button
+          onClick={openConnectModal ?? (() => {})}
+          className="bg-[#17121f] border-2 border-[#d6b55b] text-[#d6b55b] text-xs
+                     font-mono tracking-widest px-5 py-2.5 hover:bg-[#d6b55b] hover:text-[#17121f]
+                     transition-all"
+        >
+          CONNECT WALLET
+        </button>
+      </div>
+    );
+  }
   if (!isAdmin)  return <p className="text-red-500/60 text-sm">Not an admin wallet.</p>;
 
   const remintAll = async () => {

@@ -8541,22 +8541,24 @@ export function VacuumBurnRoomExperience({
           activeBoxIndexRef={activeBoxIndexRef}
           runStartIndex={committedHiddenWalletBoxCount}
         />
-        <MuseumWalletConnectButton
-          connected={walletConnected}
-          onConnect={() => {
-            if (controlledWalletConnected === undefined) setDemoWalletConnected(true)
-            void onConnectWallet?.()
-            setRunActive(false)
-            setRunTargetCount(0)
-            setBurnedWalletBoxCount(0)
-            setRunCompletedBurnCount(0)
-            setBurnDetailItemId(null)
-            setBurnPickerOpen(false)
-            activeBoxIndexRef.current = 0
-            carryoverSequencesRef.current = []
-            dropSequenceStart.current = null
-          }}
-        />
+        {eventLive && (
+          <MuseumWalletConnectButton
+            connected={walletConnected}
+            onConnect={() => {
+              if (controlledWalletConnected === undefined) setDemoWalletConnected(true)
+              void onConnectWallet?.()
+              setRunActive(false)
+              setRunTargetCount(0)
+              setBurnedWalletBoxCount(0)
+              setRunCompletedBurnCount(0)
+              setBurnDetailItemId(null)
+              setBurnPickerOpen(false)
+              activeBoxIndexRef.current = 0
+              carryoverSequencesRef.current = []
+              dropSequenceStart.current = null
+            }}
+          />
+        )}
         {eventLive && walletConnected && burnDetailItemId === null && !burnPickerOpen ? (
           <MuseumBurnLaunchButton
             onOpen={() => {
