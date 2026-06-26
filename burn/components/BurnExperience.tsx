@@ -8,7 +8,7 @@ import {
   useWaitForTransactionReceipt, useSwitchChain, useDisconnect,
 } from 'wagmi';
 import { base }              from 'wagmi/chains';
-import { getStatus, recordBurn, getWalletBurns, type BurnStatus } from '@/lib/api';
+import { getStatus, recordBurn, getWalletBurns, getSlideshow, type BurnStatus, type SlideshowItem } from '@/lib/api';
 import type { BurnRoomBurnRequest }                               from '@/src/burn-room';
 
 // ── 3D room — client-only, Three.js needs browser ────────────────────────
@@ -87,6 +87,7 @@ export function BurnExperience() {
   const [activeTier,  setActiveTier]  = useState<1 | 2 | null>(null);
   const [errorMsg,    setErrorMsg]    = useState('');
   const [webgl,       setWebgl]       = useState<'ok' | 'unavailable' | 'checking'>('checking');
+  const [slideshow,   setSlideshow]   = useState<SlideshowItem[]>([]);
 
   // Token balance
   const { data: balance } = useReadContract({
@@ -152,6 +153,14 @@ export function BurnExperience() {
     if (txFailed) { setPhase('error'); setErrorMsg('Transaction failed on-chain.'); }
   }, [txFailed]);
 
+  useEffect(() => {
+    getSlideshow().then(setSlideshow).catch(() => {});
+    const id = setInterval(() => {
+      getSlideshow().then(setSlideshow).catch(() => {});
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   // Called by the 3D room immediately when the user clicks BURN — fires the
   // wallet signature request. The animation itself only plays once `txHash`
   // is set below (see signedTxKey prop passed to the room).
@@ -204,7 +213,9 @@ export function BurnExperience() {
         onBurnRequested={handleBurnRequested}
         burn2Remaining={status ? 5 - status.burn2Count : 5}
         burn1Open={status?.burn1Open ?? true}
+        eventLive={status?.eventLive ?? true}
         signedTxKey={txHash}
+        slideshowItems={slideshow}
       />
 
       {/* TX status overlay — fixed so it sits above the fixed canvas */}
@@ -269,7 +280,7 @@ export function BurnExperience() {
       )}
 
       {/* Wallet overlay — top right, DOM-based for full wallet management */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col items-end gap-2">
+      <div className="fixed top-4 right-4 z-[70] flex flex-col items-end gap-2">
         {!address ? (
           <button
             onClick={openConnectModal ?? (() => {})}
@@ -314,7 +325,7 @@ export function BurnExperience() {
 
       {/* Back to museum — top left */}
       <a href="https://museumofbased.art"
-         className="fixed top-4 left-4 z-50 flex items-center gap-2
+         className="fixed top-4 left-4 z-[70] flex items-center gap-2
                     bg-[#17121f]/70 hover:bg-[#17121f]/90 backdrop-blur-sm
                     border border-[#d6b55b]/40 hover:border-[#d6b55b]/80
                     text-[#d6b55b] text-[11px] font-mono tracking-widest
@@ -325,7 +336,7 @@ export function BurnExperience() {
 
       {/* Discreet admin link */}
       <a href="/admin"
-         className="fixed bottom-4 right-4 z-40 text-[9px] text-white/15 hover:text-white/40
+         className="fixed bottom-4 right-4 z-[70] text-[9px] text-white/15 hover:text-white/40
                     tracking-widest font-mono transition-colors">
         ADMIN
       </a>
@@ -341,7 +352,7 @@ function ComingSoonOverlay() {
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center"
-      style={{ background: 'rgba(10, 8, 14, 0.22)' }}
+      style={{ background: 'rgba(10, 8, 14, 0.22)', pointerEvents: 'none' }}
     >
       <div
         className="px-10 py-6 text-center select-none"

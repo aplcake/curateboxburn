@@ -3,7 +3,7 @@ const cors      = require('cors');
 const { createPublicClient, createWalletClient, http, parseAbiItem } = require('viem');
 const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
-const { db, getBurnStatus, recordBurn, setBurn1Open, setEventLive, getAllBurns, hasTx } = require('./db');
+const { db, getBurnStatus, recordBurn, setBurn1Open, setEventLive, getAllBurns, hasTx, replaceSlideshowItems, getSlideshowItems } = require('./db');
 
 const app = express();
 app.use(express.json());
@@ -164,10 +164,60 @@ const sendDiscord = async (wallet, tier, txHash, burn2Remaining) => {
   }).catch(e => console.error('Discord error:', e.message));
 };
 
+// ─── OpenSea slideshow resolver ───────────────────────────────────────────────
+// Accepts links like:
+//   https://opensea.io/assets/base/0xCONTRACT/123
+//   https://opensea.io/item/base/0xCONTRACT/123
+// and resolves them to a display name + image URL via the OpenSea API.
+// OPENSEA_API_KEY is optional but strongly recommended — OpenSea heavily
+// rate-limits/blocks unauthenticated requests.
+const OPENSEA_API_KEY = process.env.OPENSEA_API_KEY || null;
+
+const parseOpenSeaUrl = (url) => {
+  const match = url.trim().match(
+    /opensea\.io\/(?:assets|item)\/([a-zA-Z0-9_-]+)\/(0x[a-fA-F0-9]{40})\/(\d+)/
+  );
+  if (!match) return null;
+  return { chain: match[1], contract: match[2], tokenId: match[3] };
+};
+
+const fetchOpenSeaNFT = async (openseaUrl) => {
+  const parsed = parseOpenSeaUrl(openseaUrl);
+  if (!parsed) return { openseaUrl, name: null, imageUrl: null, error: 'Could not parse OpenSea URL' };
+
+  const { chain, contract, tokenId } = parsed;
+  const apiUrl = `https://api.opensea.io/api/v2/chain/${chain}/contract/${contract}/nfts/${tokenId}`;
+
+  try {
+    const r = await fetch(apiUrl, {
+      headers: OPENSEA_API_KEY ? { 'x-api-key': OPENSEA_API_KEY } : {},
+    });
+    if (!r.ok) {
+      return { openseaUrl, name: null, imageUrl: null, error: `OpenSea API ${r.status}` };
+    }
+    const data = await r.json();
+    const nft = data.nft || {};
+    return {
+      openseaUrl,
+      name:     nft.name || `#${tokenId}`,
+      imageUrl: nft.image_url || null,
+      error:    nft.image_url ? null : 'No image returned by OpenSea',
+    };
+  } catch (err) {
+    return { openseaUrl, name: null, imageUrl: null, error: err.message };
+  }
+};
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 // Public: burn counts / open-state
 app.get('/status', (_req, res) => res.json(getBurnStatus()));
+
+// Public: slideshow images for the room display (only items that resolved)
+app.get('/slideshow', (_req, res) => {
+  const items = getSlideshowItems().filter(i => !!i.imageUrl);
+  res.json(items);
+});
 
 // Public: check what a specific wallet has already burned
 app.get('/burns/wallet/:address', (req, res) => {
@@ -218,6 +268,29 @@ app.post('/admin/burn1/open',   requireAdmin, (_req, res) => { setBurn1Open(true
 // Admin: toggle whole event live / coming-soon
 app.post('/admin/event/go-live',     requireAdmin, (_req, res) => { setEventLive(true);  res.json({ eventLive: true  }); });
 app.post('/admin/event/coming-soon', requireAdmin, (_req, res) => { setEventLive(false); res.json({ eventLive: false }); });
+
+// Admin: save the slideshow — pastes a fresh list of OpenSea links, resolves
+// each via the OpenSea API, replaces the stored set entirely.
+app.post('/admin/slideshow', requireAdmin, async (req, res) => {
+  const { urls } = req.body;
+  if (!Array.isArray(urls))
+    return res.status(400).json({ error: 'urls must be an array of strings' });
+
+  const cleanUrls = urls.map(u => String(u).trim()).filter(Boolean);
+  const results = [];
+  for (const url of cleanUrls) {
+    const resolved = await fetchOpenSeaNFT(url);
+    results.push(resolved);
+  }
+
+  replaceSlideshowItems(results.map(r => ({
+    openseaUrl: r.openseaUrl,
+    name:       r.name,
+    imageUrl:   r.imageUrl,
+  })));
+
+  res.json({ success: true, results });
+});
 
 // Admin: list all burns (JSON)
 app.get('/admin/burns', requireAdmin, (_req, res) => res.json(getAllBurns()));

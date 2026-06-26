@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount }           from 'wagmi';
-import { adminAction, downloadCSV, getStatus, setEventLive, type BurnStatus } from '@/lib/api';
+import {
+  adminAction, downloadCSV, getStatus, setEventLive,
+  getSlideshow, saveSlideshow, type BurnStatus, type SlideshowSaveResult,
+} from '@/lib/api';
 
 const ADMIN_WALLETS = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || '')
   .split(',')
@@ -18,9 +21,18 @@ export function AdminPanel() {
   const [msg,     setMsg]     = useState('');
   const [reminting, setReminting] = useState(false);
   const [liveToggling, setLiveToggling] = useState(false);
+  const [slideshowText, setSlideshowText] = useState('');
+  const [slideshowSaving, setSlideshowSaving] = useState(false);
+  const [slideshowResults, setSlideshowResults] = useState<SlideshowSaveResult[] | null>(null);
 
   const refresh = async () => { try { setStatus(await getStatus()); } catch {} };
   useEffect(() => { refresh(); }, []);
+
+  useEffect(() => {
+    getSlideshow()
+      .then(items => setSlideshowText(items.map(i => i.openseaUrl).join('\n')))
+      .catch(() => {});
+  }, []);
 
   if (!address)  return <p className="text-white/30 text-sm">Connect wallet to access admin.</p>;
   if (!isAdmin)  return <p className="text-red-500/60 text-sm">Not an admin wallet.</p>;
@@ -53,6 +65,23 @@ export function AdminPanel() {
       setMsg((e as Error).message);
     } finally {
       setLiveToggling(false);
+    }
+  };
+
+  const saveSlideshowList = async () => {
+    setSlideshowSaving(true);
+    setSlideshowResults(null);
+    setMsg('');
+    try {
+      const urls = slideshowText.split('\n').map(u => u.trim()).filter(Boolean);
+      const results = await saveSlideshow(urls);
+      setSlideshowResults(results);
+      const ok = results.filter(r => !r.error).length;
+      setMsg(`Slideshow saved: ${ok}/${results.length} resolved`);
+    } catch (e: unknown) {
+      setMsg((e as Error).message);
+    } finally {
+      setSlideshowSaving(false);
     }
   };
 
@@ -160,6 +189,44 @@ export function AdminPanel() {
       >
         {reminting ? 'MINTING…' : '🔥 REMINT AIRDROP TO ALL BURNS'}
       </button>
+
+      {/* NFT slideshow — paste OpenSea links, one per line */}
+      <div className="flex flex-col gap-2 border border-white/10 p-4">
+        <p className="text-xs tracking-widest text-white/50">
+          NFT SLIDESHOW &mdash; paste OpenSea links, one per line
+        </p>
+        <textarea
+          value={slideshowText}
+          onChange={(e) => setSlideshowText(e.target.value)}
+          placeholder="https://opensea.io/assets/base/0x.../123"
+          rows={5}
+          className="w-full bg-black/40 border border-white/10 text-white/80 text-xs font-mono
+                     p-2 tracking-wide placeholder:text-white/20 focus:outline-none focus:border-white/30"
+        />
+        <button
+          className="w-full py-2 border border-white/20 text-white/70 text-xs tracking-widest
+                     hover:border-white/40 hover:text-white transition disabled:opacity-40"
+          disabled={slideshowSaving}
+          onClick={saveSlideshowList}
+        >
+          {slideshowSaving ? 'RESOLVING…' : 'SAVE SLIDESHOW'}
+        </button>
+
+        {slideshowResults && (
+          <div className="flex flex-col gap-1.5 mt-1">
+            {slideshowResults.map((r, i) => (
+              <div key={i} className="flex items-center gap-2 text-[10px]">
+                {r.imageUrl
+                  ? <img src={r.imageUrl} alt="" className="w-6 h-6 object-contain bg-white/5 flex-shrink-0" />
+                  : <div className="w-6 h-6 bg-red-900/30 flex-shrink-0" />}
+                <span className={r.error ? 'text-red-400' : 'text-green-400/80'}>
+                  {r.error ? `✗ ${r.error}` : `✓ ${r.name || 'OK'}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {msg && <p className="text-xs text-center text-white/50">{msg}</p>}
     </div>

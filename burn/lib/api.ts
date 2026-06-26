@@ -59,6 +59,37 @@ export const setEventLive = async (live: boolean) => {
   return data;
 };
 
+export type SlideshowItem = {
+  id:         number;
+  openseaUrl: string;
+  name:       string | null;
+  imageUrl:   string | null;
+};
+
+export const getSlideshow = async (): Promise<SlideshowItem[]> => {
+  const r = await fetch(apiUrl('/slideshow'));
+  if (!r.ok) return [];
+  return r.json();
+};
+
+export type SlideshowSaveResult = {
+  openseaUrl: string;
+  name:       string | null;
+  imageUrl:   string | null;
+  error:      string | null;
+};
+
+export const saveSlideshow = async (urls: string[]): Promise<SlideshowSaveResult[]> => {
+  const r = await fetch('/api/admin/slideshow', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ urls }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Failed to save slideshow');
+  return data.results;
+};
+
 export const downloadCSV = () => {
   window.location.href = '/api/admin/export';
 };

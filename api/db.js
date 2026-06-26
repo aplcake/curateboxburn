@@ -20,6 +20,14 @@ db.exec(`
     value TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS slideshow_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    opensea_url TEXT    NOT NULL,
+    name        TEXT,
+    image_url   TEXT,
+    sort_order  INTEGER NOT NULL DEFAULT 0
+  );
+
   INSERT OR IGNORE INTO config (key, value) VALUES ('burn1_open',  'true');
   INSERT OR IGNORE INTO config (key, value) VALUES ('burn2_count', '0');
   INSERT OR IGNORE INTO config (key, value) VALUES ('event_live',  'true');
@@ -77,4 +85,22 @@ const setEventLive = (live) => setConfig.run(live ? 'true' : 'false', 'event_liv
 const getAllBurns  = () => db.prepare('SELECT * FROM burns ORDER BY created_at ASC').all();
 const hasTx       = (txHash) => !!db.prepare('SELECT id FROM burns WHERE tx_hash = ?').get(txHash.toLowerCase());
 
-module.exports = { db, getBurnStatus, recordBurn, setBurn1Open, setEventLive, getAllBurns, hasTx };
+// ── Slideshow ────────────────────────────────────────────────────────────────
+// Replaces the entire slideshow list each time the admin saves a new set.
+const replaceSlideshowItems = db.transaction((items) => {
+  db.prepare('DELETE FROM slideshow_items').run();
+  const insert = db.prepare(
+    'INSERT INTO slideshow_items (opensea_url, name, image_url, sort_order) VALUES (?, ?, ?, ?)'
+  );
+  items.forEach((item, i) => {
+    insert.run(item.openseaUrl, item.name || null, item.imageUrl || null, i);
+  });
+});
+
+const getSlideshowItems = () =>
+  db.prepare('SELECT id, opensea_url AS openseaUrl, name, image_url AS imageUrl FROM slideshow_items ORDER BY sort_order ASC').all();
+
+module.exports = {
+  db, getBurnStatus, recordBurn, setBurn1Open, setEventLive, getAllBurns, hasTx,
+  replaceSlideshowItems, getSlideshowItems,
+};

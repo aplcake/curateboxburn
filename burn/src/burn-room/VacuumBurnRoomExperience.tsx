@@ -101,6 +101,13 @@ export type VacuumBurnRoomExperienceProps = {
   onBurnRequested?: (request: BurnRoomBurnRequest) => void | Promise<void>
   burn2Remaining?: number
   burn1Open?: boolean
+  // When false, the BURN button itself doesn't render — independent of any
+  // DOM overlay, so the room is inert no matter what wraps it.
+  eventLive?: boolean
+  // Images shown on a loop in the right-side wall frame. Each item's
+  // imageUrl should be a directly-loadable image URL (already resolved
+  // server-side from an OpenSea link).
+  slideshowItems?: readonly { imageUrl: string | null; name?: string | null }[]
   // Set this to the tx hash (or any unique string) once the wallet signature
   // succeeds and the tx is submitted. The room watches for changes to this
   // value and plays the burn ritual animation only after it changes.
@@ -3563,20 +3570,140 @@ function McmDoorCarpet({
   )
 }
 
+function NftSlideshowFrame({
+  items,
+  face,
+}: {
+  items: readonly { imageUrl: string | null; name?: string | null }[]
+  face: 1 | -1
+}) {
+  const validItems = useMemo(() => items.filter((i): i is { imageUrl: string; name?: string | null } => !!i.imageUrl), [items])
+
+  const [index, setIndex] = useState(0)
+  const [texture, setTexture] = useState<THREE.Texture | null>(null)
+  const [aspect, setAspect] = useState(1)
+  const opacityRef = useRef(0)
+  const meshRef = useRef<THREE.Mesh>(null)
+
+  useEffect(() => {
+    setIndex(0)
+  }, [validItems.length])
+
+  // Cycle to the next item every 5s
+  useEffect(() => {
+    if (validItems.length <= 1) return
+    const id = setInterval(() => setIndex((i) => (i + 1) % validItems.length), 5000)
+    return () => clearInterval(id)
+  }, [validItems.length])
+
+  // Load the texture for the current item
+  useEffect(() => {
+    const url = validItems[index]?.imageUrl
+    if (!url) return
+    let cancelled = false
+    const loader = new THREE.TextureLoader()
+    loader.setCrossOrigin('anonymous')
+    loader.load(
+      url,
+      (tex) => {
+        if (cancelled) return
+        tex.colorSpace = THREE.SRGBColorSpace
+        const img = tex.image as HTMLImageElement | undefined
+        if (img?.width && img?.height) setAspect(img.width / img.height)
+        opacityRef.current = 0
+        setTexture(tex)
+      },
+      undefined,
+      () => { /* failed to load this one — keep whatever was showing */ },
+    )
+    return () => { cancelled = true }
+  }, [validItems, index])
+
+  useFrame((_, dt) => {
+    if (!meshRef.current) return
+    opacityRef.current = Math.min(1, opacityRef.current + dt * 2.2)
+    const mat = meshRef.current.material as THREE.MeshBasicMaterial
+    mat.opacity = opacityRef.current
+  })
+
+  if (validItems.length === 0) {
+    return <MuseumSideGeometricPrint face={face} />
+  }
+
+  // Fit the image inside the mat opening without distorting it
+  const maxH = 0.5
+  const maxW = 0.34
+  let planeH = maxH
+  let planeW = maxH * aspect
+  if (planeW > maxW) {
+    planeW = maxW
+    planeH = maxW / aspect
+  }
+
+  return (
+    <group position={[face * -0.01, -0.02, 0]}>
+      <mesh position={[face * -0.018, -0.048, 0.052]} scale={[0.014, 0.82, 0.62]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryShadowMaterial()}
+      </mesh>
+      <OutlineMesh
+        position={[0, 0, 0]}
+        scale={[0.052, 0.78, 0.58]}
+        outlineWidth={0.014}
+        outlineColor="#17121f"
+        geometry={<boxGeometry args={[1, 1, 1]} />}
+        material={galleryFrameMaterial()}
+      />
+      <mesh position={[face * 0.018, 0, 0]} scale={[0.024, 0.6, 0.42]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryMatMaterial()}
+      </mesh>
+      {/* Dark backdrop directly behind the image — the giveaway NFTs are
+          transparent-background pixel art, so without this they'd look
+          like floating fragments against the room's bright wallpaper. */}
+      <mesh position={[face * 0.026, 0, 0]} scale={[0.01, 0.52, 0.36]}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshToonMaterial color="#241f2e" gradientMap={getToonRampTexture()} />
+      </mesh>
+      {texture && (
+        <mesh
+          ref={meshRef}
+          position={[face * 0.034, 0, 0]}
+          rotation={[0, (Math.PI / 2) * face, 0]}
+        >
+          <planeGeometry args={[planeW, planeH]} />
+          <meshBasicMaterial
+            map={texture}
+            transparent
+            alphaTest={0.05}
+            toneMapped={false}
+            depthWrite={false}
+            opacity={0}
+          />
+        </mesh>
+      )}
+    </group>
+  )
+}
+
 function MuseumSideWallArt({
   wallFaceX,
   side,
   z,
+  slideshowItems,
 }: {
   wallFaceX: number
   side: 'left' | 'right'
   z: number
+  slideshowItems?: readonly { imageUrl: string | null; name?: string | null }[]
 }) {
   const face = side === 'left' ? 1 : -1
 
   return (
     <group position={[wallFaceX + face * 0.05, 1.74, z]}>
-      {side === 'left' ? <McmFeatureWallGallery face={face} /> : <MuseumSideGeometricPrint face={face} />}
+      {side === 'left'
+        ? <McmFeatureWallGallery face={face} />
+        : <NftSlideshowFrame items={slideshowItems ?? []} face={face} />}
     </group>
   )
 }
@@ -4018,7 +4145,11 @@ function McmIncineratorNook() {
   )
 }
 
-function ToonRoomShell() {
+function ToonRoomShell({
+  slideshowItems,
+}: {
+  slideshowItems?: readonly { imageUrl: string | null; name?: string | null }[]
+}) {
   const roomWidth = ROOM_RIGHT_X - ROOM_LEFT_X
   const roomDepth = ROOM_FRONT_Z - ROOM_BACK_Z
   const floorWidth = roomWidth + 0.32
@@ -4213,7 +4344,7 @@ function ToonRoomShell() {
       <McmDoorCarpet x={leftWallFaceX + 0.46} z={leftServiceDoorZ} side="left" />
       <McmDoorCarpet x={rightWallFaceX - 0.46} z={rightServiceDoorZ} side="right" />
       <MuseumSideWallArt wallFaceX={leftWallFaceX} side="left" z={ROOM_CENTER_Z + 0.68} />
-      <MuseumSideWallArt wallFaceX={rightWallFaceX} side="right" z={ROOM_CENTER_Z - 0.68} />
+      <MuseumSideWallArt wallFaceX={rightWallFaceX} side="right" z={ROOM_CENTER_Z - 0.68} slideshowItems={slideshowItems} />
       <MuseumWallAccessories wallFaceZ={wallFaceZ} />
       <McmFloorPlant position={[ROOM_LEFT_X + 0.62, ROOM_FLOOR_Y + 0.02, ROOM_FRONT_Z - 0.92]} flip={1} />
 
@@ -8235,6 +8366,8 @@ export function VacuumBurnRoomExperience({
   onBurnRequested,
   burn2Remaining = 5,
   burn1Open = true,
+  eventLive = true,
+  slideshowItems,
   signedTxKey,
 }: VacuumBurnRoomExperienceProps = {}) {
   const runtime = useRef(createRuntime())
@@ -8366,7 +8499,7 @@ export function VacuumBurnRoomExperience({
         <pointLight position={[TRAPDOOR_POSITION[0] - 0.04, ROOM_FLOOR_Y + 0.18, TRAPDOOR_POSITION[2] - 0.06]} intensity={0.12} color="#ff8f2f" distance={2.6} decay={2} />
         <RitualPolishFx sequenceStart={dropSequenceStart} carryoverSequencesRef={carryoverSequencesRef} activeBoxIndexRef={activeBoxIndexRef} />
         <MuseumStageBackdrop />
-        <ToonRoomShell />
+        <ToonRoomShell slideshowItems={slideshowItems} />
         <group scale={VACUUM_STAGE_SCALE} position={VACUUM_STAGE_POSITION}>
           <VacuumBody runtime={runtime} />
           <VacuumBagSuctionGlow runtime={runtime} />
@@ -8424,14 +8557,14 @@ export function VacuumBurnRoomExperience({
             dropSequenceStart.current = null
           }}
         />
-        {walletConnected && burnDetailItemId === null && !burnPickerOpen ? (
+        {eventLive && walletConnected && burnDetailItemId === null && !burnPickerOpen ? (
           <MuseumBurnLaunchButton
             onOpen={() => {
               setBurnPickerOpen(true)
             }}
           />
         ) : null}
-        {walletConnected && burnDetailItemId === null && burnPickerOpen ? (
+        {eventLive && walletConnected && burnDetailItemId === null && burnPickerOpen ? (
           <MuseumBurnCatalogSelector
             selectedItemId={selectedBurnItemId}
             availableBoxCount={availableWalletBoxCount}
@@ -8452,6 +8585,7 @@ export function VacuumBurnRoomExperience({
             setBurnPickerOpen(true)
           }}
           onBurn={(item) => {
+            if (!eventLive) return
             setSelectedBurnItemId(item.id)
             setBurnDetailItemId(null)
             setBurnPickerOpen(false)
