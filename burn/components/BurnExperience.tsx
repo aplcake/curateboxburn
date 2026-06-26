@@ -152,9 +152,12 @@ export function BurnExperience() {
     if (txFailed) { setPhase('error'); setErrorMsg('Transaction failed on-chain.'); }
   }, [txFailed]);
 
-  // Called by the 3D room after the ritual completes
+  // Called by the 3D room immediately when the user clicks BURN — fires the
+  // wallet signature request. The animation itself only plays once `txHash`
+  // is set below (see signedTxKey prop passed to the room).
   const handleBurnRequested = useCallback((request: BurnRoomBurnRequest) => {
     if (!address) return;
+    if (status && !status.eventLive) return; // safety net — UI should already block this
 
     // Prompt chain switch if not on Base already
     if (chainId !== base.id) {
@@ -174,7 +177,7 @@ export function BurnExperience() {
       args: [address, DEAD, TOKEN_ID, BigInt(tier), '0x'],
       chainId: base.id,
     });
-  }, [address, chainId, switchChain, writeContract]);
+  }, [address, chainId, switchChain, writeContract, status]);
 
   const reset = useCallback(() => {
     setPhase('idle');
@@ -201,6 +204,7 @@ export function BurnExperience() {
         onBurnRequested={handleBurnRequested}
         burn2Remaining={status ? 5 - status.burn2Count : 5}
         burn1Open={status?.burn1Open ?? true}
+        signedTxKey={txHash}
       />
 
       {/* TX status overlay — fixed so it sits above the fixed canvas */}
@@ -325,7 +329,39 @@ export function BurnExperience() {
                     tracking-widest font-mono transition-colors">
         ADMIN
       </a>
+
+      {/* Coming Soon — room stays fully visible/orbitable underneath,
+          this just blocks burning until the event goes live */}
+      {status && !status.eventLive && <ComingSoonOverlay />}
     </>
+  );
+}
+
+function ComingSoonOverlay() {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center"
+      style={{ background: 'rgba(10, 8, 14, 0.22)' }}
+    >
+      <div
+        className="px-10 py-6 text-center select-none"
+        style={{
+          background: '#17121f',
+          border: '3px solid #d6b55b',
+          boxShadow: '6px 6px 0 rgba(0,0,0,0.45)',
+        }}
+      >
+        <p
+          className="font-mono font-bold tracking-[0.3em] text-2xl sm:text-3xl"
+          style={{ color: '#d6b55b' }}
+        >
+          COMING SOON
+        </p>
+        <p className="font-mono text-[10px] sm:text-xs tracking-widest text-white/40 mt-2">
+          the burn event hasn&apos;t opened yet
+        </p>
+      </div>
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount }           from 'wagmi';
-import { adminAction, downloadCSV, getStatus, type BurnStatus } from '@/lib/api';
+import { adminAction, downloadCSV, getStatus, setEventLive, type BurnStatus } from '@/lib/api';
 
 const ADMIN_WALLETS = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || '')
   .split(',')
@@ -17,6 +17,7 @@ export function AdminPanel() {
   const [loading, setLoading] = useState('');
   const [msg,     setMsg]     = useState('');
   const [reminting, setReminting] = useState(false);
+  const [liveToggling, setLiveToggling] = useState(false);
 
   const refresh = async () => { try { setStatus(await getStatus()); } catch {} };
   useEffect(() => { refresh(); }, []);
@@ -37,6 +38,21 @@ export function AdminPanel() {
       setMsg((e as Error).message);
     } finally {
       setReminting(false);
+    }
+  };
+
+  const toggleEventLive = async () => {
+    if (!status) return;
+    setLiveToggling(true);
+    setMsg('');
+    try {
+      await setEventLive(!status.eventLive);
+      setMsg(status.eventLive ? 'Switched to COMING SOON ✓' : 'Event is now LIVE 🚀');
+      await refresh();
+    } catch (e: unknown) {
+      setMsg((e as Error).message);
+    } finally {
+      setLiveToggling(false);
     }
   };
 
@@ -61,6 +77,12 @@ export function AdminPanel() {
       {/* Stats */}
       {status && (
         <div className="grid grid-cols-2 gap-3 text-xs text-white/60">
+          <div className="stat-box col-span-2 flex justify-between items-center">
+            <span>EVENT STATUS</span>
+            <span className={status.eventLive ? 'text-green-400' : 'text-yellow-400'}>
+              {status.eventLive ? '● LIVE' : '● COMING SOON'}
+            </span>
+          </div>
           <div className="stat-box">
             <span className="block text-xl text-white font-bold">{status.totalBurn1}</span>
             TOTAL BURN ×1
@@ -83,6 +105,22 @@ export function AdminPanel() {
           </div>
         </div>
       )}
+
+      {/* Event live toggle — single button, label auto-switches to current state's action */}
+      <button
+        className={`w-full py-3 text-xs tracking-widest transition disabled:opacity-40 border
+                    ${status?.eventLive
+                      ? 'border-yellow-700/50 text-yellow-400 hover:bg-yellow-900/20'
+                      : 'border-green-700/50 text-green-400 hover:bg-green-900/20'}`}
+        disabled={liveToggling || !status}
+        onClick={toggleEventLive}
+      >
+        {liveToggling
+          ? 'UPDATING…'
+          : status?.eventLive
+            ? '⏳ SET TO COMING SOON'
+            : '🚀 GO LIVE'}
+      </button>
 
       {/* Burn 1 toggle */}
       <div className="flex gap-3">

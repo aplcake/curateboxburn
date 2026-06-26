@@ -101,6 +101,10 @@ export type VacuumBurnRoomExperienceProps = {
   onBurnRequested?: (request: BurnRoomBurnRequest) => void | Promise<void>
   burn2Remaining?: number
   burn1Open?: boolean
+  // Set this to the tx hash (or any unique string) once the wallet signature
+  // succeeds and the tx is submitted. The room watches for changes to this
+  // value and plays the burn ritual animation only after it changes.
+  signedTxKey?: string
 }
 
 // Context so BurnCounterPlaque can read status without prop-drilling through ToonRoomShell
@@ -8231,11 +8235,14 @@ export function VacuumBurnRoomExperience({
   onBurnRequested,
   burn2Remaining = 5,
   burn1Open = true,
+  signedTxKey,
 }: VacuumBurnRoomExperienceProps = {}) {
   const runtime = useRef(createRuntime())
   const dropSequenceStart = useRef<number | null>(null)
   const activeBoxIndexRef = useRef(0)
   const carryoverSequencesRef = useRef<CarryoverBoxSequence[]>([])
+  const armedBurnItemRef = useRef<BurnCatalogItem | null>(null)
+  const previousSignedTxKeyRef = useRef<string | undefined>(undefined)
   const pendingBurnItemRef = useRef<BurnCatalogItem | null>(null)
   const previousControlledAvailableBoxCount = useRef(controlledAvailableBoxCount)
   const orbitControlsRef = useRef<OrbitControlsImpl | null>(null)
@@ -8288,6 +8295,20 @@ export function VacuumBurnRoomExperience({
     setRunNonce((nonce) => nonce + 1)
   }
 
+  // The burn ritual animation only plays once the wallet signature has gone
+  // through (signedTxKey changes to a new, truthy value). Until then the
+  // item is just "armed" — no visuals play yet.
+  useEffect(() => {
+    if (!signedTxKey || signedTxKey === previousSignedTxKeyRef.current) return
+    previousSignedTxKeyRef.current = signedTxKey
+    const item = armedBurnItemRef.current
+    if (item) {
+      armedBurnItemRef.current = null
+      startBurnRun(item)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedTxKey])
+
   return (
     <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open }}>
     <div
@@ -8323,22 +8344,10 @@ export function VacuumBurnRoomExperience({
             setRunCompletedBurnCount(nextCompletedCount)
           }}
           onRunComplete={() => {
-            const completedItem = pendingBurnItemRef.current
             setBurnedWalletBoxCount((currentCount) => Math.min(DEMO_WALLET_BOX_COUNT, currentCount + runTargetCount))
             setRunCompletedBurnCount(0)
             setRunActive(false)
             pendingBurnItemRef.current = null
-            if (completedItem && onBurnRequested) {
-              void onBurnRequested({
-                source: 'vacuum-head-box-ritual',
-                boxId: completedItem.id,
-                itemId: completedItem.id,
-                itemTitle: completedItem.title,
-                tier: completedItem.boxCost,
-                boxCount: completedItem.boxCost,
-                visualState: 'burn-complete',
-              })
-            }
           }}
         />
         <InspectionPose
@@ -8446,7 +8455,20 @@ export function VacuumBurnRoomExperience({
             setSelectedBurnItemId(item.id)
             setBurnDetailItemId(null)
             setBurnPickerOpen(false)
-            startBurnRun(item)
+            // Arm the item — the actual visual ritual only plays once the
+            // wallet signature succeeds (see signedTxKey effect above).
+            armedBurnItemRef.current = item
+            if (onBurnRequested) {
+              void onBurnRequested({
+                source: 'vacuum-head-box-ritual',
+                boxId: item.id,
+                itemId: item.id,
+                itemTitle: item.title,
+                tier: item.boxCost,
+                boxCount: item.boxCost,
+                visualState: 'burn-complete',
+              })
+            }
           }}
         />
         <MuseumToonCursor />

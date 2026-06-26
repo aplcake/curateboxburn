@@ -3,7 +3,7 @@ const cors      = require('cors');
 const { createPublicClient, createWalletClient, http, parseAbiItem } = require('viem');
 const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
-const { db, getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx } = require('./db');
+const { db, getBurnStatus, recordBurn, setBurn1Open, setEventLive, getAllBurns, hasTx } = require('./db');
 
 const app = express();
 app.use(express.json());
@@ -187,6 +187,8 @@ app.post('/burns', async (req, res) => {
     return res.status(400).json({ error: 'txHash and tier (1|2) required' });
 
   const status = getBurnStatus();
+  if (!status.eventLive)
+    return res.status(400).json({ error: 'Burn event is not live yet' });
   if (tier === 1 && !status.burn1Open)
     return res.status(400).json({ error: 'Burn 1 is currently closed' });
   if (tier === 2 && !status.burn2Open)
@@ -212,6 +214,10 @@ app.post('/burns', async (req, res) => {
 // Admin: toggle burn 1
 app.post('/admin/burn1/close',  requireAdmin, (_req, res) => { setBurn1Open(false); res.json({ burn1Open: false }); });
 app.post('/admin/burn1/open',   requireAdmin, (_req, res) => { setBurn1Open(true);  res.json({ burn1Open: true  }); });
+
+// Admin: toggle whole event live / coming-soon
+app.post('/admin/event/go-live',     requireAdmin, (_req, res) => { setEventLive(true);  res.json({ eventLive: true  }); });
+app.post('/admin/event/coming-soon', requireAdmin, (_req, res) => { setEventLive(false); res.json({ eventLive: false }); });
 
 // Admin: list all burns (JSON)
 app.get('/admin/burns', requireAdmin, (_req, res) => res.json(getAllBurns()));

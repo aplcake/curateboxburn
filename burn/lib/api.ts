@@ -10,6 +10,7 @@ function apiUrl(path: string): string {
 }
 
 export type BurnStatus = {
+  eventLive:  boolean;
   burn1Open:  boolean;
   burn2Open:  boolean;
   burn2Count: number;
@@ -47,6 +48,14 @@ export const adminAction = async (action: 'close' | 'open') => {
   const r = await fetch(`/api/admin/burn1/${action}`, { method: 'POST' });
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'Admin action failed');
+  return data;
+};
+
+export const setEventLive = async (live: boolean) => {
+  const action = live ? 'go-live' : 'coming-soon';
+  const r = await fetch(`/api/admin/event/${action}`, { method: 'POST' });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Failed to update event status');
   return data;
 };
 

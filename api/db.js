@@ -22,6 +22,7 @@ db.exec(`
 
   INSERT OR IGNORE INTO config (key, value) VALUES ('burn1_open',  'true');
   INSERT OR IGNORE INTO config (key, value) VALUES ('burn2_count', '0');
+  INSERT OR IGNORE INTO config (key, value) VALUES ('event_live',  'true');
 `);
 
 // Seed the two confirmed on-chain burns for raffle record-keeping.
@@ -53,6 +54,7 @@ const setConfig = db.prepare('UPDATE config SET value = ? WHERE key = ?');
 const getBurnStatus = () => {
   const burn2Count = parseInt(getConfig('burn2_count') || '0');
   return {
+    eventLive:   getConfig('event_live') === 'true',
     burn1Open:   getConfig('burn1_open') === 'true',
     burn2Count,
     burn2Open:   burn2Count < 5,
@@ -71,7 +73,8 @@ const recordBurn = (wallet, tier, txHash, amount) => {
 };
 
 const setBurn1Open = (open) => setConfig.run(open ? 'true' : 'false', 'burn1_open');
+const setEventLive = (live) => setConfig.run(live ? 'true' : 'false', 'event_live');
 const getAllBurns  = () => db.prepare('SELECT * FROM burns ORDER BY created_at ASC').all();
 const hasTx       = (txHash) => !!db.prepare('SELECT id FROM burns WHERE tx_hash = ?').get(txHash.toLowerCase());
 
-module.exports = { db, getBurnStatus, recordBurn, setBurn1Open, getAllBurns, hasTx };
+module.exports = { db, getBurnStatus, recordBurn, setBurn1Open, setEventLive, getAllBurns, hasTx };
