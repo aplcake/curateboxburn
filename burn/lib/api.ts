@@ -69,7 +69,15 @@ export type SlideshowItem = {
 export const getSlideshow = async (): Promise<SlideshowItem[]> => {
   const r = await fetch(apiUrl('/slideshow'));
   if (!r.ok) return [];
-  return r.json();
+  const items: SlideshowItem[] = await r.json();
+  // Route images through our own proxy — OpenSea's CDN often lacks the CORS
+  // headers WebGL needs to load an image as a texture.
+  return items.map(item => ({
+    ...item,
+    imageUrl: item.imageUrl
+      ? apiUrl(`/image-proxy?url=${encodeURIComponent(item.imageUrl)}`)
+      : null,
+  }));
 };
 
 export type SlideshowSaveResult = {

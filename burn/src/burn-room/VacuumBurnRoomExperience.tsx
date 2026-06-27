@@ -3614,7 +3614,7 @@ function NftSlideshowFrame({
         setTexture(tex)
       },
       undefined,
-      () => { /* failed to load this one — keep whatever was showing */ },
+      (err) => { console.error('[slideshow] texture load failed:', url, err) },
     )
     return () => { cancelled = true }
   }, [validItems, index])

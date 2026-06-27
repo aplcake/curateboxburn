@@ -219,6 +219,33 @@ app.get('/slideshow', (_req, res) => {
   res.json(items);
 });
 
+// Public: proxies a slideshow image so the browser can load it as a WebGL
+// texture. OpenSea's image CDN often doesn't send permissive CORS headers,
+// which makes Three.js's TextureLoader fail silently — proxying through our
+// own server with an explicit Access-Control-Allow-Origin sidesteps that.
+// Only proxies URLs we've actually stored, so this can't be used as an open proxy.
+app.get('/image-proxy', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).send('Missing url');
+
+  const known = db.prepare('SELECT 1 FROM slideshow_items WHERE image_url = ?').get(url);
+  if (!known) return res.status(403).send('URL not allowed');
+
+  try {
+    const upstream = await fetch(url);
+    if (!upstream.ok) return res.status(upstream.status).send('Upstream error');
+    const contentType = upstream.headers.get('content-type') || 'image/png';
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(buffer);
+  } catch (err) {
+    console.error('[image-proxy] failed:', err.message);
+    res.status(502).send('Proxy fetch failed');
+  }
+});
+
 // Public: check what a specific wallet has already burned
 app.get('/burns/wallet/:address', (req, res) => {
   const address = req.params.address.toLowerCase();
