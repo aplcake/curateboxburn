@@ -60,16 +60,24 @@ type Phase = 'idle' | 'pending' | 'confirming' | 'recording' | 'done' | 'error';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-// Type-safe filter for soldOutItemIds
-type SoldOutId = 'archive-tag' | 'gilded-seal';
+// Type-safe filter for soldOutItemIds / claimedItemIds
+type CatalogItemId = 'archive-tag' | 'gilded-seal';
 
-function buildSoldOutIds(
-  status:      BurnStatus | null,
+// Phase closed → SOLD OUT stamp
+function buildSoldOutIds(status: BurnStatus | null): readonly CatalogItemId[] {
+  const ids: CatalogItemId[] = [];
+  if (!status?.burn1Open) ids.push('archive-tag');
+  if (!status?.burn2Open) ids.push('gilded-seal');
+  return ids;
+}
+
+// Wallet already burned for it → CLAIMED EDITION stamp
+function buildClaimedIds(
   walletBurns: { burnedTier1: boolean; burnedTier2: boolean } | null,
-): readonly SoldOutId[] {
-  const ids: SoldOutId[] = [];
-  if (!status?.burn1Open || walletBurns?.burnedTier1) ids.push('archive-tag');
-  if (!status?.burn2Open || walletBurns?.burnedTier2) ids.push('gilded-seal');
+): readonly CatalogItemId[] {
+  const ids: CatalogItemId[] = [];
+  if (walletBurns?.burnedTier1) ids.push('archive-tag');
+  if (walletBurns?.burnedTier2) ids.push('gilded-seal');
   return ids;
 }
 
@@ -197,7 +205,8 @@ export function BurnExperience() {
 
   if (webgl === 'unavailable') return <WebGLError />;
 
-  const soldOutItemIds = buildSoldOutIds(status, walletBurns);
+  const soldOutItemIds = buildSoldOutIds(status);
+  const claimedItemIds = buildClaimedIds(walletBurns);
   const isProcessing   = phase === 'pending' || phase === 'confirming' || phase === 'recording';
 
   return (
@@ -208,6 +217,7 @@ export function BurnExperience() {
         walletLabel={address ? `${address.slice(0, 6)}\u2026${address.slice(-4)}` : undefined}
         availableBoxCount={balance !== undefined ? Number(balance) : 0}
         soldOutItemIds={soldOutItemIds}
+        claimedItemIds={claimedItemIds}
         showDevSoldOutSwitch={false}
         onConnectWallet={openConnectModal ?? (() => {})}
         onBurnRequested={handleBurnRequested}
