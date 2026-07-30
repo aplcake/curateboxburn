@@ -4,7 +4,7 @@ const { createPublicClient, createWalletClient, http, parseAbiItem } = require('
 const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
 const {
-  db, getBurnStatus, recordBurn, setBurn1Open, setEventLive,
+  db, getBurnStatus, recordBurn, setBurn1Open, setBurn2Open, setEventLive,
   startBurn1Timer, stopBurn1Timer, hasWalletBurned1,
   getAllBurns, hasTx, replaceSlideshowItems, getSlideshowItems,
 } = require('./db');
@@ -157,7 +157,8 @@ const verifyBurnTx = async (txHash, expectedTier, attempt = 0) => {
 
     return { wallet: log.args.from, amount };
   } catch (err) {
-    if (attempt < MAX_ATTEMPTS && err.message?.includes('block range')) {
+    const retryable = err.message?.includes('block range') || err.message?.includes('could not be found');
+    if (attempt < MAX_ATTEMPTS && retryable) {
       console.log(`[verify] RPC not ready, retrying in ${DELAY_MS}ms (attempt ${attempt + 1}/${MAX_ATTEMPTS})`);
       await sleep(DELAY_MS);
       return verifyBurnTx(txHash, expectedTier, attempt + 1);
@@ -266,7 +267,7 @@ app.post('/burns', async (req, res) => {
   if (tier === 1 && !status.burn1Open)
     return res.status(400).json({ error: 'Burn 1 is currently closed' });
   if (tier === 2 && !status.burn2Open)
-    return res.status(400).json({ error: `Burn 2 is full (${MAX_BURN2}/${MAX_BURN2})` });
+    return res.status(400).json({ error: 'Burn 2 is closed' });
   if (hasTx(txHash))
     return res.status(400).json({ error: 'TX already recorded' });
 
@@ -278,7 +279,14 @@ app.post('/burns', async (req, res) => {
   if (tier === 1 && hasWalletBurned1(verified.wallet))
     return res.status(400).json({ error: 'This wallet has already burned ×1 (one per wallet)' });
 
-  recordBurn(verified.wallet, tier, txHash, verified.amount);
+  try {
+    recordBurn(verified.wallet, tier, txHash, verified.amount);
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE'))
+      return res.status(400).json({ error: 'This wallet has already burned ×1 (one per wallet)' });
+    console.error('recordBurn error:', err.message);
+    return res.status(500).json({ error: 'Failed to record burn — contact admin with your tx hash' });
+  }
   mintManifoldNFT(verified.wallet, tier).catch(() => {});
 
   const fresh = getBurnStatus();
@@ -296,6 +304,15 @@ app.post('/admin/burn1/close', requireAdmin, (_req, res) => {
 app.post('/admin/burn1/open', requireAdmin, (_req, res) => {
   setBurn1Open(true);
   res.json({ burn1Open: true });
+});
+
+app.post('/admin/burn2/close', requireAdmin, (_req, res) => {
+  setBurn2Open(false);
+  res.json({ burn2Open: false });
+});
+app.post('/admin/burn2/open', requireAdmin, (_req, res) => {
+  setBurn2Open(true);
+  res.json({ burn2Open: true });
 });
 
 // Start the 24h burn ×1 open edition timer

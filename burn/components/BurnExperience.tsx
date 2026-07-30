@@ -68,7 +68,7 @@ function buildSoldOutIds(
   walletBurns: { burnedTier1: boolean; burnedTier2: boolean } | null,
 ): readonly SoldOutId[] {
   const ids: SoldOutId[] = [];
-  if (!status?.burn1Open)                            ids.push('archive-tag');
+  if (!status?.burn1Open || walletBurns?.burnedTier1) ids.push('archive-tag');
   if (!status?.burn2Open || walletBurns?.burnedTier2) ids.push('gilded-seal');
   return ids;
 }

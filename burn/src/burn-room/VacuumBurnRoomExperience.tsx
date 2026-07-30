@@ -6226,6 +6226,12 @@ function MuseumToonCursor() {
   const clickPulse = useRef(0)
   const isPressed = useRef(false)
   const hasPointer = useRef(false)
+  // Touch devices have no persistent pointer — showing the glove there leaves
+  // it stranded wherever the last tap landed, so it's mouse/trackpad only.
+  const finePointer = useMemo(
+    () => typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches,
+    [],
+  )
   const cursorGeometry = useMemo(() => {
     const shape = new THREE.Shape()
     shape.moveTo(0.035, 0.142)
@@ -6253,6 +6259,7 @@ function MuseumToonCursor() {
   }, [])
 
   useEffect(() => {
+    if (!finePointer) return undefined
     const canvas = gl.domElement
     const showCursor = () => {
       hasPointer.current = true
@@ -6287,7 +6294,7 @@ function MuseumToonCursor() {
       window.removeEventListener('pointerup', releaseCursor)
       canvas.style.cursor = ''
     }
-  }, [gl])
+  }, [gl, finePointer])
 
   useEffect(() => {
     const rootNode = root.current
@@ -6308,8 +6315,6 @@ function MuseumToonCursor() {
     const rootNode = root.current
     const bodyNode = body.current
     if (!rootNode || !bodyNode) return
-
-    gl.domElement.style.cursor = 'none'
 
     const follow = 1 - Math.exp(-22 * dt)
     previousPointer.current.copy(smoothedPointer.current)
@@ -6388,6 +6393,8 @@ function MuseumToonCursor() {
     }
   })
 
+  if (!finePointer) return null
+
   return (
     <group ref={root} visible={false} renderOrder={100}>
       <group ref={body}>
@@ -6457,17 +6464,6 @@ function MuseumWalletConnectButton({
   const cameraRight = useMemo(() => new THREE.Vector3(), [])
   const cameraUp = useMemo(() => new THREE.Vector3(), [])
   const targetPosition = useMemo(() => new THREE.Vector3(), [])
-
-  useEffect(() => {
-    if (!hovered) return undefined
-    const canvas = gl.domElement
-    const previousCursor = canvas.style.cursor
-    canvas.style.cursor = 'pointer'
-
-    return () => {
-      canvas.style.cursor = previousCursor
-    }
-  }, [gl, hovered])
 
   useFrame(({ clock }, dt) => {
     const rootNode = root.current
@@ -6689,17 +6685,6 @@ function MuseumBurnLaunchButton({
   const cameraUp = useMemo(() => new THREE.Vector3(), [])
   const targetPosition = useMemo(() => new THREE.Vector3(), [])
 
-  useEffect(() => {
-    if (!hovered) return undefined
-    const canvas = gl.domElement
-    const previousCursor = canvas.style.cursor
-    canvas.style.cursor = 'pointer'
-
-    return () => {
-      canvas.style.cursor = previousCursor
-    }
-  }, [gl, hovered])
-
   useFrame(({ clock }, dt) => {
     const rootNode = root.current
     const plaqueNode = plaque.current
@@ -6907,17 +6892,6 @@ function MuseumBurnCatalogSelector({
   const cameraRight = useMemo(() => new THREE.Vector3(), [])
   const cameraUp = useMemo(() => new THREE.Vector3(), [])
   const targetPosition = useMemo(() => new THREE.Vector3(), [])
-
-  useEffect(() => {
-    if (hoveredOption === null) return undefined
-    const canvas = gl.domElement
-    const previousCursor = canvas.style.cursor
-    canvas.style.cursor = 'pointer'
-
-    return () => {
-      canvas.style.cursor = previousCursor
-    }
-  }, [gl, hoveredOption])
 
   useFrame(({ clock }, dt) => {
     const rootNode = root.current
@@ -7493,17 +7467,6 @@ function MuseumBurnDetailWindow({
       }
     }
   }, [item?.id])
-
-  useEffect(() => {
-    if (!backHovered && !burnHovered) return undefined
-    const canvas = gl.domElement
-    const previousCursor = canvas.style.cursor
-    canvas.style.cursor = burnHovered && burnUnavailable ? 'not-allowed' : 'pointer'
-
-    return () => {
-      canvas.style.cursor = previousCursor
-    }
-  }, [backHovered, burnHovered, burnUnavailable, gl])
 
   useFrame(({ clock }, dt) => {
     const rootNode = root.current
