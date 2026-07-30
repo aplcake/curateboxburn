@@ -108,6 +108,7 @@ const mintManifoldNFT = async (toAddress, tier) => {
     args:         [[toAddress], [tokenId], [1n]],
   });
   console.log(`[manifold] tier${tier} — minted token #${tokenId} to ${toAddress} — tx ${hash}`);
+  return hash;
 };
 
 // ─── Viem read client ─────────────────────────────────────────────────────────
@@ -355,6 +356,24 @@ app.post('/admin/remint', requireAdmin, async (req, res) => {
     }
   }
   res.json({ success: true, results });
+});
+
+// Mint without a burn — verifies the minter wallet can mint on the real
+// contract before the event. Does NOT touch the burns table, so it never
+// affects the one-burn-per-wallet limit.
+app.post('/admin/testmint', requireAdmin, async (req, res) => {
+  const { wallet, tier } = req.body;
+  if (!wallet || !/^0x[a-fA-F0-9]{40}$/.test(wallet))
+    return res.status(400).json({ error: 'wallet must be a 0x address' });
+  const t = tier === 2 ? 2 : 1;
+  try {
+    const txHash = await mintManifoldNFT(wallet, t);
+    if (!txHash)
+      return res.status(400).json({ error: `Mint skipped — minter key, tier ${t} contract, or token ID not configured` });
+    res.json({ success: true, wallet, tier: t, txHash });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/admin/remint/:wallet', requireAdmin, async (req, res) => {
