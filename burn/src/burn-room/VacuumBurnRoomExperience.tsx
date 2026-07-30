@@ -101,6 +101,7 @@ export type VacuumBurnRoomExperienceProps = {
   onBurnRequested?: (request: BurnRoomBurnRequest) => void | Promise<void>
   burn2Remaining?: number
   burn1Open?: boolean
+  timerEnd?: string | null
   // When false, the BURN button itself doesn't render — independent of any
   // DOM overlay, so the room is inert no matter what wraps it.
   eventLive?: boolean
@@ -115,9 +116,10 @@ export type VacuumBurnRoomExperienceProps = {
 }
 
 // Context so BurnCounterPlaque can read status without prop-drilling through ToonRoomShell
-const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean }>({
+const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean; timerEnd: string | null }>({
   burn2Remaining: 5,
   burn1Open: true,
+  timerEnd: null,
 })
 const DEFAULT_BURN_CATALOG_ITEM_ID: BurnCatalogItemId = BURN_CATALOG_ITEMS[0].id
 function getBurnCatalogItem(itemId: BurnCatalogItemId) {
@@ -3083,10 +3085,33 @@ function DisplayText3D({
 }
 
 
+function useBurn1Countdown(timerEnd: string | null) {
+  const [display, setDisplay] = useState('')
+  useEffect(() => {
+    if (!timerEnd) { setDisplay(''); return; }
+    const tick = () => {
+      const ms = new Date(timerEnd).getTime() - Date.now()
+      if (ms <= 0) { setDisplay('CLOSED'); return; }
+      const h = Math.floor(ms / 3_600_000)
+      const m = Math.floor((ms % 3_600_000) / 60_000)
+      const s = Math.floor((ms % 60_000) / 1_000)
+      setDisplay(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [timerEnd])
+  return display
+}
+
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
-  const { burn2Remaining, burn1Open } = React.useContext(BurnStatusContext)
+  const { burn2Remaining, burn1Open, timerEnd } = React.useContext(BurnStatusContext)
   const goldSealCount = `${burn2Remaining} / 5`
-  const tagStatus = burn1Open ? 'OPEN' : 'CLOSED'
+  const countdown     = useBurn1Countdown(timerEnd)
+  // When timer is active show HH:MM:SS, otherwise OPEN / CLOSED
+  const tagDisplay    = timerEnd && burn1Open ? countdown : (burn1Open ? 'OPEN' : 'CLOSED')
+  const tagColor      = burn1Open ? '#2f7168' : '#c43426'
+  const tagSize       = timerEnd && burn1Open ? 0.082 : (burn1Open ? 0.122 : 0.096)
 
   return (
     <group position={[ROOM_CENTER_X + 0.18, 1.9, wallFaceZ + 0.092]} renderOrder={20}>
@@ -3158,12 +3183,12 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
         align="right"
         depth={0.04}
       />
-      <DisplayText3D text="MUSEUM TAG" position={[-0.92, -0.27, 0.13]} size={0.088} color="#2f7168" depth={0.032} />
+      <DisplayText3D text="OPEN EDITION" position={[-0.92, -0.27, 0.13]} size={0.078} color="#2f7168" depth={0.032} />
       <DisplayText3D
-        text={tagStatus}
+        text={tagDisplay}
         position={[0.92, -0.282, 0.132]}
-        size={burn1Open ? 0.122 : 0.096}
-        color={burn1Open ? '#2f7168' : '#c43426'}
+        size={tagSize}
+        color={tagColor}
         align="right"
         depth={0.04}
       />
@@ -8366,6 +8391,7 @@ export function VacuumBurnRoomExperience({
   onBurnRequested,
   burn2Remaining = 5,
   burn1Open = true,
+  timerEnd,
   eventLive = true,
   slideshowItems,
   signedTxKey,
@@ -8443,7 +8469,7 @@ export function VacuumBurnRoomExperience({
   }, [signedTxKey])
 
   return (
-    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open }}>
+    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open, timerEnd: timerEnd ?? null }}>
     <div
       style={{
         position: 'fixed',

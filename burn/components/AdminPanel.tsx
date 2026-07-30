@@ -5,7 +5,9 @@ import { useAccount }           from 'wagmi';
 import { useConnectModal }      from '@rainbow-me/rainbowkit';
 import {
   adminAction, downloadCSV, getStatus, setEventLive,
-  getSlideshow, saveSlideshow, type BurnStatus, type SlideshowSaveResult,
+  startBurn1Timer, stopBurn1Timer,
+  getSlideshow, saveSlideshow,
+  type BurnStatus, type SlideshowSaveResult,
 } from '@/lib/api';
 
 const ADMIN_WALLETS = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || '')
@@ -13,22 +15,49 @@ const ADMIN_WALLETS = (process.env.NEXT_PUBLIC_ADMIN_WALLETS || '')
   .map(w => w.trim().toLowerCase())
   .filter(Boolean);
 
-export function AdminPanel() {
-  const { address } = useAccount();
-  const { openConnectModal } = useConnectModal();
-  const isAdmin     = !!address && ADMIN_WALLETS.includes(address.toLowerCase());
+function useCountdown(timerEnd: string | null) {
+  const [remaining, setRemaining] = useState('');
+  useEffect(() => {
+    if (!timerEnd) { setRemaining(''); return; }
+    const tick = () => {
+      const ms = new Date(timerEnd).getTime() - Date.now();
+      if (ms <= 0) { setRemaining('EXPIRED'); return; }
+      const h = Math.floor(ms / 3_600_000);
+      const m = Math.floor((ms % 3_600_000) / 60_000);
+      const s = Math.floor((ms % 60_000) / 1_000);
+      setRemaining(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [timerEnd]);
+  return remaining;
+}
 
-  const [status,  setStatus]  = useState<BurnStatus | null>(null);
-  const [loading, setLoading] = useState('');
-  const [msg,     setMsg]     = useState('');
-  const [reminting, setReminting] = useState(false);
-  const [liveToggling, setLiveToggling] = useState(false);
-  const [slideshowText, setSlideshowText] = useState('');
+export function AdminPanel() {
+  const { address }        = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const isAdmin = !!address && ADMIN_WALLETS.includes(address.toLowerCase());
+
+  const [status,          setStatus]          = useState<BurnStatus | null>(null);
+  const [loading,         setLoading]         = useState('');
+  const [msg,             setMsg]             = useState('');
+  const [reminting,       setReminting]       = useState(false);
+  const [liveToggling,    setLiveToggling]    = useState(false);
+  const [timerRunning,    setTimerRunning]    = useState(false);
+  const [slideshowText,   setSlideshowText]   = useState('');
   const [slideshowSaving, setSlideshowSaving] = useState(false);
-  const [slideshowResults, setSlideshowResults] = useState<SlideshowSaveResult[] | null>(null);
+  const [slideshowResults,setSlideshowResults]= useState<SlideshowSaveResult[] | null>(null);
+
+  const countdown = useCountdown(status?.timerEnd ?? null);
 
   const refresh = async () => { try { setStatus(await getStatus()); } catch {} };
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    // Re-poll status every 10s so the admin sees timer expiry without reloading
+    const id = setInterval(refresh, 10_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     getSlideshow()
@@ -51,69 +80,67 @@ export function AdminPanel() {
       </div>
     );
   }
-  if (!isAdmin)  return <p className="text-red-500/60 text-sm">Not an admin wallet.</p>;
+  if (!isAdmin) return <p className="text-red-500/60 text-sm">Not an admin wallet.</p>;
 
   const remintAll = async () => {
-    setReminting(true);
-    setMsg('');
+    setReminting(true); setMsg('');
     try {
-      const r = await fetch('/api/admin/remint', { method: 'POST' });
+      const r    = await fetch('/api/admin/remint', { method: 'POST' });
       const data = await r.json();
-      const ok  = data.results?.filter((x: { status: string }) => x.status === 'minted').length ?? 0;
+      const ok   = data.results?.filter((x: { status: string }) => x.status === 'minted').length ?? 0;
       const fail = data.results?.filter((x: { status: string }) => x.status === 'failed').length ?? 0;
       setMsg(`Remint done: ${ok} minted, ${fail} failed`);
-    } catch (e: unknown) {
-      setMsg((e as Error).message);
-    } finally {
-      setReminting(false);
-    }
+    } catch (e: unknown) { setMsg((e as Error).message); }
+    finally { setReminting(false); }
   };
 
   const toggleEventLive = async () => {
     if (!status) return;
-    setLiveToggling(true);
-    setMsg('');
+    setLiveToggling(true); setMsg('');
     try {
       await setEventLive(!status.eventLive);
       setMsg(status.eventLive ? 'Switched to COMING SOON ✓' : 'Event is now LIVE 🚀');
       await refresh();
-    } catch (e: unknown) {
-      setMsg((e as Error).message);
-    } finally {
-      setLiveToggling(false);
-    }
+    } catch (e: unknown) { setMsg((e as Error).message); }
+    finally { setLiveToggling(false); }
+  };
+
+  const handleTimer = async (action: 'start' | 'stop') => {
+    setTimerRunning(true); setMsg('');
+    try {
+      const r    = await fetch(`/api/admin/timer/${action}`, { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error);
+      setMsg(action === 'start'
+        ? `⏱ 24h timer started — burn 1 open until ${new Date(data.timerEnd).toLocaleString()}`
+        : '⏹ Timer stopped — burn 1 closed');
+      await refresh();
+    } catch (e: unknown) { setMsg((e as Error).message); }
+    finally { setTimerRunning(false); }
   };
 
   const saveSlideshowList = async () => {
-    setSlideshowSaving(true);
-    setSlideshowResults(null);
-    setMsg('');
+    setSlideshowSaving(true); setSlideshowResults(null); setMsg('');
     try {
-      const urls = slideshowText.split('\n').map(u => u.trim()).filter(Boolean);
+      const urls    = slideshowText.split('\n').map(u => u.trim()).filter(Boolean);
       const results = await saveSlideshow(urls);
       setSlideshowResults(results);
-      const ok = results.filter(r => !r.error).length;
-      setMsg(`Slideshow saved: ${ok}/${results.length} resolved`);
-    } catch (e: unknown) {
-      setMsg((e as Error).message);
-    } finally {
-      setSlideshowSaving(false);
-    }
+      setMsg(`Slideshow saved: ${results.filter(r => !r.error).length}/${results.length} resolved`);
+    } catch (e: unknown) { setMsg((e as Error).message); }
+    finally { setSlideshowSaving(false); }
   };
 
   const toggle = async (action: 'open' | 'close') => {
-    setLoading(action);
-    setMsg('');
+    setLoading(action); setMsg('');
     try {
       await adminAction(action);
       setMsg(`Burn 1 ${action === 'open' ? 'opened' : 'closed'} ✓`);
       await refresh();
-    } catch (e: unknown) {
-      setMsg((e as Error).message);
-    } finally {
-      setLoading('');
-    }
+    } catch (e: unknown) { setMsg((e as Error).message); }
+    finally { setLoading(''); }
   };
+
+  const timerActive = !!status?.timerEnd && status.burn1Open;
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-lg">
@@ -137,9 +164,11 @@ export function AdminPanel() {
             TOTAL BURN ×2
           </div>
           <div className="stat-box col-span-2 flex justify-between items-center">
-            <span>BURN 1 STATUS</span>
+            <span>BURN 1 — OPEN EDITION</span>
             <span className={status.burn1Open ? 'text-green-400' : 'text-red-400'}>
-              {status.burn1Open ? '● OPEN' : '● CLOSED'}
+              {timerActive
+                ? `● OPEN — ${countdown} left`
+                : status.burn1Open ? '● OPEN' : '● CLOSED'}
             </span>
           </div>
           <div className="stat-box col-span-2 flex justify-between items-center">
@@ -151,7 +180,7 @@ export function AdminPanel() {
         </div>
       )}
 
-      {/* Event live toggle — single button, label auto-switches to current state's action */}
+      {/* Event live toggle */}
       <button
         className={`w-full py-3 text-xs tracking-widest transition disabled:opacity-40 border
                     ${status?.eventLive
@@ -160,14 +189,44 @@ export function AdminPanel() {
         disabled={liveToggling || !status}
         onClick={toggleEventLive}
       >
-        {liveToggling
-          ? 'UPDATING…'
-          : status?.eventLive
-            ? '⏳ SET TO COMING SOON'
-            : '🚀 GO LIVE'}
+        {liveToggling ? 'UPDATING…' : status?.eventLive ? '⏳ SET TO COMING SOON' : '🚀 GO LIVE'}
       </button>
 
-      {/* Burn 1 toggle */}
+      {/* 24h timer — open edition burn 1 */}
+      <div className="flex flex-col gap-2 border border-white/10 p-4">
+        <p className="text-xs tracking-widest text-white/50 mb-1">
+          BURN ×1 — OPEN EDITION 24H TIMER
+        </p>
+        {timerActive && (
+          <p className="text-center text-orange-400 font-mono text-lg tracking-widest">
+            {countdown}
+          </p>
+        )}
+        <div className="flex gap-3">
+          <button
+            className="flex-1 py-2 border border-orange-700/50 text-orange-400 text-xs
+                       tracking-widest hover:bg-orange-900/20 transition disabled:opacity-40"
+            disabled={timerRunning || timerActive}
+            onClick={() => handleTimer('start')}
+          >
+            {timerRunning ? '…' : '▶ START 24H BURN'}
+          </button>
+          <button
+            className="flex-1 py-2 border border-red-700/50 text-red-400 text-xs
+                       tracking-widest hover:bg-red-900/20 transition disabled:opacity-40"
+            disabled={timerRunning || !timerActive}
+            onClick={() => handleTimer('stop')}
+          >
+            {timerRunning ? '…' : '⏹ STOP TIMER'}
+          </button>
+        </div>
+        <p className="text-[10px] text-white/30 text-center">
+          Starting the timer opens burn ×1 and automatically closes it after 24 hours.
+          One mint per wallet — unlimited supply.
+        </p>
+      </div>
+
+      {/* Manual burn 1 toggle (fallback) */}
       <div className="flex gap-3">
         <button
           className="flex-1 py-2 border border-green-700/50 text-green-400 text-xs tracking-widest
@@ -196,7 +255,7 @@ export function AdminPanel() {
         ↓ EXPORT BURNS CSV
       </button>
 
-      {/* Remint airdrop to all recorded burns */}
+      {/* Remint */}
       <button
         className="w-full py-3 border border-yellow-700/50 text-yellow-400 text-xs tracking-widest
                    hover:bg-yellow-900/20 transition disabled:opacity-40"
@@ -206,10 +265,10 @@ export function AdminPanel() {
         {reminting ? 'MINTING…' : '🔥 REMINT AIRDROP TO ALL BURNS'}
       </button>
 
-      {/* NFT slideshow — paste OpenSea links, one per line */}
+      {/* NFT slideshow */}
       <div className="flex flex-col gap-2 border border-white/10 p-4">
         <p className="text-xs tracking-widest text-white/50">
-          NFT SLIDESHOW &mdash; paste OpenSea links, one per line
+          NFT SLIDESHOW — paste OpenSea links, one per line
         </p>
         <textarea
           value={slideshowText}
@@ -227,7 +286,6 @@ export function AdminPanel() {
         >
           {slideshowSaving ? 'RESOLVING…' : 'SAVE SLIDESHOW'}
         </button>
-
         {slideshowResults && (
           <div className="flex flex-col gap-1.5 mt-1">
             {slideshowResults.map((r, i) => (

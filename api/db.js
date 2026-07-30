@@ -28,13 +28,13 @@ db.exec(`
     sort_order  INTEGER NOT NULL DEFAULT 0
   );
 
-  INSERT OR IGNORE INTO config (key, value) VALUES ('burn1_open',  'true');
-  INSERT OR IGNORE INTO config (key, value) VALUES ('burn2_count', '0');
-  INSERT OR IGNORE INTO config (key, value) VALUES ('event_live',  'true');
+  INSERT OR IGNORE INTO config (key, value) VALUES ('burn1_open',      'true');
+  INSERT OR IGNORE INTO config (key, value) VALUES ('burn2_count',     '0');
+  INSERT OR IGNORE INTO config (key, value) VALUES ('event_live',      'true');
+  INSERT OR IGNORE INTO config (key, value) VALUES ('burn1_timer_end', '');
 `);
 
 // Seed the two confirmed on-chain burns for raffle record-keeping.
-// These do NOT increment burn2_count — counter stays fresh at 5/5.
 const CONFIRMED_BURNS = [
   {
     wallet: '0x7ea0ccda3930abca0e6cb57f98e30ebcb708dd60',
@@ -59,15 +59,32 @@ for (const b of CONFIRMED_BURNS) {
 const getConfig = (key) => db.prepare('SELECT value FROM config WHERE key = ?').get(key)?.value;
 const setConfig = db.prepare('UPDATE config SET value = ? WHERE key = ?');
 
+// Auto-close burn1 if the 24h timer has expired
+function checkTimerExpiry() {
+  const end = getConfig('burn1_timer_end');
+  if (!end) return;
+  if (Date.now() > new Date(end).getTime()) {
+    const still_open = getConfig('burn1_open') === 'true';
+    if (still_open) {
+      setConfig.run('false', 'burn1_open');
+      setConfig.run('', 'burn1_timer_end');
+      console.log('[timer] burn1 timer expired — auto-closed burn 1');
+    }
+  }
+}
+
 const getBurnStatus = () => {
+  checkTimerExpiry();
   const burn2Count = parseInt(getConfig('burn2_count') || '0');
+  const timerEnd   = getConfig('burn1_timer_end') || null;
   return {
-    eventLive:   getConfig('event_live') === 'true',
-    burn1Open:   getConfig('burn1_open') === 'true',
+    eventLive:  getConfig('event_live') === 'true',
+    burn1Open:  getConfig('burn1_open') === 'true',
+    timerEnd:   timerEnd || null,
     burn2Count,
-    burn2Open:   burn2Count < 5,
-    totalBurn1:  db.prepare("SELECT COUNT(*) AS c FROM burns WHERE tier = 1").get().c,
-    totalBurn2:  db.prepare("SELECT COUNT(*) AS c FROM burns WHERE tier = 2").get().c,
+    burn2Open:  burn2Count < 5,
+    totalBurn1: db.prepare("SELECT COUNT(*) AS c FROM burns WHERE tier = 1").get().c,
+    totalBurn2: db.prepare("SELECT COUNT(*) AS c FROM burns WHERE tier = 2").get().c,
   };
 };
 
@@ -82,11 +99,29 @@ const recordBurn = (wallet, tier, txHash, amount) => {
 
 const setBurn1Open = (open) => setConfig.run(open ? 'true' : 'false', 'burn1_open');
 const setEventLive = (live) => setConfig.run(live ? 'true' : 'false', 'event_live');
+
+// Start a 24h timer — opens burn1 immediately and sets the auto-close time
+const startBurn1Timer = (hours = 24) => {
+  const end = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+  setConfig.run('true',  'burn1_open');
+  setConfig.run(end,     'burn1_timer_end');
+  console.log(`[timer] burn1 timer started — closes at ${end}`);
+  return end;
+};
+
+const stopBurn1Timer = () => {
+  setConfig.run('false', 'burn1_open');
+  setConfig.run('',      'burn1_timer_end');
+  console.log('[timer] burn1 timer stopped manually');
+};
+
+const hasWalletBurned1 = (wallet) =>
+  !!db.prepare("SELECT 1 FROM burns WHERE wallet = ? AND tier = 1").get(wallet.toLowerCase());
+
 const getAllBurns  = () => db.prepare('SELECT * FROM burns ORDER BY created_at ASC').all();
 const hasTx       = (txHash) => !!db.prepare('SELECT id FROM burns WHERE tx_hash = ?').get(txHash.toLowerCase());
 
 // ── Slideshow ────────────────────────────────────────────────────────────────
-// Replaces the entire slideshow list each time the admin saves a new set.
 const replaceSlideshowItems = db.transaction((items) => {
   db.prepare('DELETE FROM slideshow_items').run();
   const insert = db.prepare(
@@ -101,6 +136,8 @@ const getSlideshowItems = () =>
   db.prepare('SELECT id, opensea_url AS openseaUrl, name, image_url AS imageUrl FROM slideshow_items ORDER BY sort_order ASC').all();
 
 module.exports = {
-  db, getBurnStatus, recordBurn, setBurn1Open, setEventLive, getAllBurns, hasTx,
+  db, getBurnStatus, recordBurn, setBurn1Open, setEventLive,
+  startBurn1Timer, stopBurn1Timer, hasWalletBurned1,
+  getAllBurns, hasTx,
   replaceSlideshowItems, getSlideshowItems,
 };

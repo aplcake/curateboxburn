@@ -12,6 +12,7 @@ function apiUrl(path: string): string {
 export type BurnStatus = {
   eventLive:  boolean;
   burn1Open:  boolean;
+  timerEnd:   string | null;  // ISO timestamp when burn1 auto-closes, null if no timer
   burn2Open:  boolean;
   burn2Count: number;
   totalBurn1: number;
@@ -48,6 +49,20 @@ export const adminAction = async (action: 'close' | 'open') => {
   const r = await fetch(`/api/admin/burn1/${action}`, { method: 'POST' });
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'Admin action failed');
+  return data;
+};
+
+export const startBurn1Timer = async (): Promise<{ timerEnd: string }> => {
+  const r = await fetch('/api/admin/timer/start', { method: 'POST' });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Failed to start timer');
+  return data;
+};
+
+export const stopBurn1Timer = async () => {
+  const r = await fetch('/api/admin/timer/stop', { method: 'POST' });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Failed to stop timer');
   return data;
 };
 

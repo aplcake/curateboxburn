@@ -3,7 +3,11 @@ const cors      = require('cors');
 const { createPublicClient, createWalletClient, http, parseAbiItem } = require('viem');
 const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
-const { db, getBurnStatus, recordBurn, setBurn1Open, setEventLive, getAllBurns, hasTx, replaceSlideshowItems, getSlideshowItems } = require('./db');
+const {
+  db, getBurnStatus, recordBurn, setBurn1Open, setEventLive,
+  startBurn1Timer, stopBurn1Timer, hasWalletBurned1,
+  getAllBurns, hasTx, replaceSlideshowItems, getSlideshowItems,
+} = require('./db');
 
 const app = express();
 app.use(express.json());
@@ -15,15 +19,15 @@ const ALLOWED_ORIGINS = [
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // server-to-server / curl
-    if (ALLOWED_ORIGINS.length === 0) return cb(null, true); // dev: allow all
+    if (!origin) return cb(null, true);
+    if (ALLOWED_ORIGINS.length === 0) return cb(null, true);
     if (ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || origin.endsWith('.vercel.app'))
       return cb(null, true);
     cb(new Error('CORS'));
   },
 }));
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
 const TOKEN_CONTRACT  = '0x04619852f38ebec22bb94ef36b99351db9900194';
 const TOKEN_ID        = BigInt(3);
 const DEAD_ADDRESS    = '0x000000000000000000000000000000000000dead';
@@ -31,39 +35,44 @@ const MAX_BURN2       = 5;
 const ADMIN_KEY       = process.env.ADMIN_API_KEY;
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK_URL;
 
-// ─── Manifold auto-mint ──────────────────────────────────────────────────────
-// Set these env vars in Railway once you have the Manifold contract ready:
-//   MANIFOLD_CONTRACT_ADDRESS  — your Manifold ERC-721 contract address
-//   MANIFOLD_CONTRACT_CHAIN    — 'base' | 'mainnet' (default: 'base')
-//   MINTER_PRIVATE_KEY         — private key of wallet with admin role on Manifold
-//   MANIFOLD_RPC_URL           — optional custom RPC for the mint chain
+// ─── Manifold ────────────────────────────────────────────────────────────────
+//
+// TIER 2 (burn ×2) — existing contract, token #1
+const MANIFOLD_T2_CONTRACT = process.env.MANIFOLD_CONTRACT_ADDRESS || null;
+const MANIFOLD_T2_TOKEN_ID = BigInt(process.env.MANIFOLD_TOKEN_ID || '1');
 
-const MANIFOLD_CONTRACT = process.env.MANIFOLD_CONTRACT_ADDRESS || null;
-const MANIFOLD_CHAIN    = process.env.MANIFOLD_CONTRACT_CHAIN === 'mainnet' ? mainnet : base;
-const MINTER_KEY        = process.env.MINTER_PRIVATE_KEY || null;
+// TIER 1 (burn ×1) — open-edition contract
+// ┌──────────────────────────────────────────────────────────────────────────┐
+// │  SET THESE IN RAILWAY WHEN YOU HAVE THE TOKEN ID:                        │
+// │  MANIFOLD_TIER1_CONTRACT_ADDRESS = 0x04619852f38EBEC22bb94eF36b99351dB9900194 │
+// │  MANIFOLD_TIER1_TOKEN_ID         = ???  ← ASK YOUR FRIEND FOR THIS      │
+// └──────────────────────────────────────────────────────────────────────────┘
+const MANIFOLD_T1_CONTRACT = process.env.MANIFOLD_TIER1_CONTRACT_ADDRESS || null;
+const MANIFOLD_T1_TOKEN_ID = BigInt(process.env.MANIFOLD_TIER1_TOKEN_ID || '0'); // 0 = not set yet
 
-// Manifold ERC-1155 Creator Core: mintBaseExisting — mints token ID 1 to each burner
-const MANIFOLD_TOKEN_ID = BigInt(process.env.MANIFOLD_TOKEN_ID || '1');
+const MANIFOLD_CHAIN = process.env.MANIFOLD_CONTRACT_CHAIN === 'mainnet' ? mainnet : base;
+const MINTER_KEY     = process.env.MINTER_PRIVATE_KEY || null;
+
 const MANIFOLD_ABI = [
   {
     name: 'mintBaseExisting', type: 'function', stateMutability: 'nonpayable',
     inputs: [
-      { name: 'to',        type: 'address[]' },
-      { name: 'tokenIds',  type: 'uint256[]' },
-      { name: 'amounts',   type: 'uint256[]' },
+      { name: 'to',       type: 'address[]' },
+      { name: 'tokenIds', type: 'uint256[]' },
+      { name: 'amounts',  type: 'uint256[]' },
     ],
     outputs: [],
   },
 ];
 
-// Lazily-created wallet client (only if env vars are set)
 let minterClient = null;
 function getMinterClient() {
   if (minterClient) return minterClient;
-  if (!MINTER_KEY || !MANIFOLD_CONTRACT) return null;
-
-  const account = privateKeyToAccount(MINTER_KEY.startsWith('0x') ? MINTER_KEY : '0x' + MINTER_KEY);
-  minterClient  = createWalletClient({
+  if (!MINTER_KEY) return null;
+  const account = privateKeyToAccount(
+    MINTER_KEY.startsWith('0x') ? MINTER_KEY : '0x' + MINTER_KEY
+  );
+  minterClient = createWalletClient({
     account,
     chain:     MANIFOLD_CHAIN,
     transport: http(process.env.MANIFOLD_RPC_URL || undefined),
@@ -71,28 +80,38 @@ function getMinterClient() {
   return minterClient;
 }
 
-// Mint one NFT to `toAddress` via the Manifold contract.
-// Fires and forgets — burn recording is never blocked by mint failures.
 const mintManifoldNFT = async (toAddress, tier) => {
-  const client = getMinterClient();
-  if (!client || !MANIFOLD_CONTRACT) {
-    console.log(`[manifold] skipped — contract: ${MANIFOLD_CONTRACT}, key set: ${!!MINTER_KEY}`);
+  const walletClient = getMinterClient();
+  if (!walletClient) {
+    console.log(`[manifold] skipped — no minter key`);
     return;
   }
-  // mintBaseExisting(address[] to, uint256[] tokenIds, uint256[] amounts)
-  const hash = await client.writeContract({
-    address:      MANIFOLD_CONTRACT,
+
+  // Route by tier
+  const contract = tier === 1 ? MANIFOLD_T1_CONTRACT : MANIFOLD_T2_CONTRACT;
+  const tokenId  = tier === 1 ? MANIFOLD_T1_TOKEN_ID : MANIFOLD_T2_TOKEN_ID;
+
+  if (!contract) {
+    console.log(`[manifold] skipped tier ${tier} — contract not configured`);
+    return;
+  }
+  if (tokenId === 0n) {
+    // ⚠️  MANIFOLD_TIER1_TOKEN_ID not set in Railway yet — mint will be skipped
+    console.warn(`[manifold] ⚠️  MANIFOLD_TIER1_TOKEN_ID is not set in Railway. Set it and use remint to catch up.`);
+    return;
+  }
+
+  const hash = await walletClient.writeContract({
+    address:      contract,
     abi:          MANIFOLD_ABI,
     functionName: 'mintBaseExisting',
-    args:         [[toAddress], [MANIFOLD_TOKEN_ID], [1n]],
+    args:         [[toAddress], [tokenId], [1n]],
   });
-
-  console.log(`[manifold] minted token #${MANIFOLD_TOKEN_ID} to ${toAddress} (tier ${tier}) — tx ${hash}`);
+  console.log(`[manifold] tier${tier} — minted token #${tokenId} to ${toAddress} — tx ${hash}`);
 };
 
-
-// ─── Viem client ────────────────────────────────────────────────────────────
-const client = createPublicClient({
+// ─── Viem read client ─────────────────────────────────────────────────────────
+const publicClient = createPublicClient({
   chain: base,
   transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org'),
 });
@@ -101,7 +120,7 @@ const TRANSFER_SINGLE = parseAbiItem(
   'event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)'
 );
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 const requireAdmin = (req, res, next) => {
   if (!ADMIN_KEY || req.headers['x-admin-key'] !== ADMIN_KEY)
     return res.status(401).json({ error: 'Unauthorized' });
@@ -114,12 +133,12 @@ const verifyBurnTx = async (txHash, expectedTier, attempt = 0) => {
   const MAX_ATTEMPTS = 5;
   const DELAY_MS     = 3000;
   try {
-    const receipt = await client.getTransactionReceipt({ hash: txHash });
+    const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
     if (!receipt || receipt.status !== 'success') return null;
 
-    const logs = await client.getLogs({
+    const logs = await publicClient.getLogs({
       address: TOKEN_CONTRACT,
-      event: TRANSFER_SINGLE,
+      event:   TRANSFER_SINGLE,
       fromBlock: receipt.blockNumber,
       toBlock:   receipt.blockNumber,
     });
@@ -155,7 +174,7 @@ const sendDiscord = async (wallet, tier, txHash, burn2Remaining) => {
 
   const content = tier === 2
     ? `🔥 **BURN ×2** — ${short} burned **2 tokens**!\n📦 Burn-2 slots left: **${burn2Remaining} / ${MAX_BURN2}**\n🔗 [BaseScan](${txLink})`
-    : `🔥 **BURN ×1** — ${short} burned **1 token**\n🔗 [BaseScan](${txLink})`;
+    : `🔥 **BURN ×1** — ${short} burned **1 token** (open edition)\n🔗 [BaseScan](${txLink})`;
 
   await fetch(DISCORD_WEBHOOK, {
     method:  'POST',
@@ -164,13 +183,7 @@ const sendDiscord = async (wallet, tier, txHash, burn2Remaining) => {
   }).catch(e => console.error('Discord error:', e.message));
 };
 
-// ─── OpenSea slideshow resolver ───────────────────────────────────────────────
-// Accepts links like:
-//   https://opensea.io/assets/base/0xCONTRACT/123
-//   https://opensea.io/item/base/0xCONTRACT/123
-// and resolves them to a display name + image URL via the OpenSea API.
-// OPENSEA_API_KEY is optional but strongly recommended — OpenSea heavily
-// rate-limits/blocks unauthenticated requests.
+// ─── OpenSea slideshow ────────────────────────────────────────────────────────
 const OPENSEA_API_KEY = process.env.OPENSEA_API_KEY || null;
 
 const parseOpenSeaUrl = (url) => {
@@ -184,19 +197,15 @@ const parseOpenSeaUrl = (url) => {
 const fetchOpenSeaNFT = async (openseaUrl) => {
   const parsed = parseOpenSeaUrl(openseaUrl);
   if (!parsed) return { openseaUrl, name: null, imageUrl: null, error: 'Could not parse OpenSea URL' };
-
   const { chain, contract, tokenId } = parsed;
   const apiUrl = `https://api.opensea.io/api/v2/chain/${chain}/contract/${contract}/nfts/${tokenId}`;
-
   try {
     const r = await fetch(apiUrl, {
       headers: OPENSEA_API_KEY ? { 'x-api-key': OPENSEA_API_KEY } : {},
     });
-    if (!r.ok) {
-      return { openseaUrl, name: null, imageUrl: null, error: `OpenSea API ${r.status}` };
-    }
+    if (!r.ok) return { openseaUrl, name: null, imageUrl: null, error: `OpenSea API ${r.status}` };
     const data = await r.json();
-    const nft = data.nft || {};
+    const nft  = data.nft || {};
     return {
       openseaUrl,
       name:     nft.name || `#${tokenId}`,
@@ -208,29 +217,20 @@ const fetchOpenSeaNFT = async (openseaUrl) => {
   }
 };
 
-// ─── Routes ─────────────────────────────────────────────────────────────────
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
-// Public: burn counts / open-state
 app.get('/status', (_req, res) => res.json(getBurnStatus()));
 
-// Public: slideshow images for the room display (only items that resolved)
 app.get('/slideshow', (_req, res) => {
   const items = getSlideshowItems().filter(i => !!i.imageUrl);
   res.json(items);
 });
 
-// Public: proxies a slideshow image so the browser can load it as a WebGL
-// texture. OpenSea's image CDN often doesn't send permissive CORS headers,
-// which makes Three.js's TextureLoader fail silently — proxying through our
-// own server with an explicit Access-Control-Allow-Origin sidesteps that.
-// Only proxies URLs we've actually stored, so this can't be used as an open proxy.
 app.get('/image-proxy', async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).send('Missing url');
-
   const known = db.prepare('SELECT 1 FROM slideshow_items WHERE image_url = ?').get(url);
   if (!known) return res.status(403).send('URL not allowed');
-
   try {
     const upstream = await fetch(url);
     if (!upstream.ok) return res.status(upstream.status).send('Upstream error');
@@ -241,22 +241,19 @@ app.get('/image-proxy', async (req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.send(buffer);
   } catch (err) {
-    console.error('[image-proxy] failed:', err.message);
     res.status(502).send('Proxy fetch failed');
   }
 });
 
-// Public: check what a specific wallet has already burned
 app.get('/burns/wallet/:address', (req, res) => {
   const address = req.params.address.toLowerCase();
-  const burns = db.prepare('SELECT tier FROM burns WHERE wallet = ?').all(address);
+  const burns   = db.prepare('SELECT tier FROM burns WHERE wallet = ?').all(address);
   res.json({
     burnedTier1: burns.some(b => b.tier === 1),
     burnedTier2: burns.some(b => b.tier === 2),
   });
 });
 
-// Public: submit a confirmed burn for recording
 app.post('/burns', async (req, res) => {
   const { txHash, tier } = req.body;
 
@@ -277,9 +274,11 @@ app.post('/burns', async (req, res) => {
   if (!verified)
     return res.status(400).json({ error: 'On-chain verification failed' });
 
-  recordBurn(verified.wallet, tier, txHash, verified.amount);
+  // One burn ×1 per wallet — open edition hard limit
+  if (tier === 1 && hasWalletBurned1(verified.wallet))
+    return res.status(400).json({ error: 'This wallet has already burned ×1 (one per wallet)' });
 
-  // Fire Manifold mint (non-blocking — burn is already recorded)
+  recordBurn(verified.wallet, tier, txHash, verified.amount);
   mintManifoldNFT(verified.wallet, tier).catch(() => {});
 
   const fresh = getBurnStatus();
@@ -288,44 +287,45 @@ app.post('/burns', async (req, res) => {
   res.json({ success: true, wallet: verified.wallet });
 });
 
-// Admin: toggle burn 1
-app.post('/admin/burn1/close',  requireAdmin, (_req, res) => { setBurn1Open(false); res.json({ burn1Open: false }); });
-app.post('/admin/burn1/open',   requireAdmin, (_req, res) => { setBurn1Open(true);  res.json({ burn1Open: true  }); });
+// ─── Admin routes ─────────────────────────────────────────────────────────────
 
-// Admin: toggle whole event live / coming-soon
+app.post('/admin/burn1/close', requireAdmin, (_req, res) => {
+  stopBurn1Timer();
+  res.json({ burn1Open: false });
+});
+app.post('/admin/burn1/open', requireAdmin, (_req, res) => {
+  setBurn1Open(true);
+  res.json({ burn1Open: true });
+});
+
+// Start the 24h burn ×1 open edition timer
+app.post('/admin/timer/start', requireAdmin, (_req, res) => {
+  const timerEnd = startBurn1Timer(24);
+  res.json({ success: true, timerEnd, burn1Open: true });
+});
+app.post('/admin/timer/stop', requireAdmin, (_req, res) => {
+  stopBurn1Timer();
+  res.json({ success: true, burn1Open: false, timerEnd: null });
+});
+
 app.post('/admin/event/go-live',     requireAdmin, (_req, res) => { setEventLive(true);  res.json({ eventLive: true  }); });
 app.post('/admin/event/coming-soon', requireAdmin, (_req, res) => { setEventLive(false); res.json({ eventLive: false }); });
 
-// Admin: save the slideshow — pastes a fresh list of OpenSea links, resolves
-// each via the OpenSea API, replaces the stored set entirely.
 app.post('/admin/slideshow', requireAdmin, async (req, res) => {
   const { urls } = req.body;
   if (!Array.isArray(urls))
     return res.status(400).json({ error: 'urls must be an array of strings' });
-
   const cleanUrls = urls.map(u => String(u).trim()).filter(Boolean);
-  const results = [];
-  for (const url of cleanUrls) {
-    const resolved = await fetchOpenSeaNFT(url);
-    results.push(resolved);
-  }
-
-  replaceSlideshowItems(results.map(r => ({
-    openseaUrl: r.openseaUrl,
-    name:       r.name,
-    imageUrl:   r.imageUrl,
-  })));
-
+  const results   = [];
+  for (const url of cleanUrls) results.push(await fetchOpenSeaNFT(url));
+  replaceSlideshowItems(results.map(r => ({ openseaUrl: r.openseaUrl, name: r.name, imageUrl: r.imageUrl })));
   res.json({ success: true, results });
 });
 
-// Admin: list all burns (JSON)
 app.get('/admin/burns', requireAdmin, (_req, res) => res.json(getAllBurns()));
 
-
-// Admin: remint airdrop to all recorded burns (for burns that happened before Manifold was wired)
 app.post('/admin/remint', requireAdmin, async (req, res) => {
-  const burns = getAllBurns();
+  const burns   = getAllBurns();
   const results = [];
   for (const burn of burns) {
     try {
@@ -340,38 +340,18 @@ app.post('/admin/remint', requireAdmin, async (req, res) => {
   res.json({ success: true, results });
 });
 
-// Admin: remint a single wallet
 app.post('/admin/remint/:wallet', requireAdmin, async (req, res) => {
   const wallet = req.params.wallet.toLowerCase();
-
-  const burn = getAllBurns().find(
-    b => b.wallet.toLowerCase() === wallet
-  );
-
-  if (!burn) {
-    return res.status(404).json({ error: 'Wallet not found' });
-  }
-
+  const burn   = getAllBurns().find(b => b.wallet.toLowerCase() === wallet);
+  if (!burn) return res.status(404).json({ error: 'Wallet not found' });
   try {
     await mintManifoldNFT(burn.wallet, burn.tier);
-
-    console.log(`[manual-remint] minted to ${burn.wallet}`);
-
-    res.json({
-      success: true,
-      wallet: burn.wallet
-    });
+    res.json({ success: true, wallet: burn.wallet });
   } catch (err) {
-    console.error(`[manual-remint] failed for ${burn.wallet}:`, err.message);
-
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Admin: download CSV
 app.get('/admin/burns/export', requireAdmin, (_req, res) => {
   const burns = getAllBurns();
   const lines = [
@@ -383,7 +363,6 @@ app.get('/admin/burns/export', requireAdmin, (_req, res) => {
   res.send(lines.join('\n'));
 });
 
-// Health
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 4000;
