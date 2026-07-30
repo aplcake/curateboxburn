@@ -213,6 +213,7 @@ export function BurnExperience() {
         onBurnRequested={handleBurnRequested}
         burn2Remaining={status ? 5 - status.burn2Count : 5}
         burn1Open={status?.burn1Open ?? true}
+        burn2Open={status?.burn2Open ?? false}
         timerEnd={status?.timerEnd ?? null}
         eventLive={status?.eventLive ?? true}
         signedTxKey={txHash}

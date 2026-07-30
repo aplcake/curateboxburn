@@ -66,14 +66,14 @@ const DEMO_WALLET_BOX_COUNT = 5
 const BURN_CATALOG_ITEMS = [
   {
     id: 'archive-tag',
-    title: 'MUSEUM TAG',
+    title: '24 HOURS OE',
     boxCost: 1,
     accent: '#2f7168',
     icon: 'tag',
   },
   {
     id: 'gilded-seal',
-    title: 'GOLD SEAL',
+    title: 'BURN 2 FCFS',
     boxCost: 2,
     accent: '#8a5a24',
     icon: 'seal',
@@ -102,6 +102,9 @@ export type VacuumBurnRoomExperienceProps = {
   onBurnRequested?: (request: BurnRoomBurnRequest) => void | Promise<void>
   burn2Remaining?: number
   burn1Open?: boolean
+  // When false, the Burn 2 (FCFS) option is hidden entirely — button and
+  // plaque row both — instead of showing as sold out.
+  burn2Open?: boolean
   timerEnd?: string | null
   // When false, the BURN button itself doesn't render — independent of any
   // DOM overlay, so the room is inert no matter what wraps it.
@@ -117,9 +120,10 @@ export type VacuumBurnRoomExperienceProps = {
 }
 
 // Context so BurnCounterPlaque can read status without prop-drilling through ToonRoomShell
-const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean; timerEnd: string | null }>({
+const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean; burn2Open: boolean; timerEnd: string | null }>({
   burn2Remaining: 5,
   burn1Open: true,
+  burn2Open: true,
   timerEnd: null,
 })
 const DEFAULT_BURN_CATALOG_ITEM_ID: BurnCatalogItemId = BURN_CATALOG_ITEMS[0].id
@@ -3098,10 +3102,11 @@ function useBurn1Countdown(timerEnd: string | null) {
 }
 
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
-  const { burn2Remaining, burn1Open, timerEnd } = React.useContext(BurnStatusContext)
+  const { burn2Remaining, burn1Open, burn2Open, timerEnd } = React.useContext(BurnStatusContext)
   const countdown = useBurn1Countdown(timerEnd)
   // Timer live → the plaque becomes a framed countdown painting for the
-  // 24h open edition. Otherwise → refined gold seal 5-slot display.
+  // 24h open edition. Otherwise → burn status board (Burn 2 row only shows
+  // while that phase is live).
   const timerLive = !!timerEnd && burn1Open && countdown !== '' && countdown !== 'CLOSED'
   const sealsLeft = Math.max(0, Math.min(5, burn2Remaining))
 
@@ -3188,7 +3193,7 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
               {galleryTealMaterial()}
             </mesh>
           ))}
-          <DisplayText3D text="OPEN EDITION" position={[0, 0.26, 0.125]} size={0.085} color="#8a5a24" align="center" depth={0.028} />
+          <DisplayText3D text="24 HOURS OE" position={[0, 0.26, 0.125]} size={0.085} color="#8a5a24" align="center" depth={0.028} />
           <DisplayText3D
             text={countdown}
             position={[0, -0.055, 0.132]}
@@ -3205,29 +3210,35 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
             <boxGeometry args={[1, 1, 1]} />
             {galleryGoldMaterial()}
           </mesh>
-          <mesh position={[0, -0.13, 0.116]} scale={[1.78, 0.018, 0.018]}>
-            <boxGeometry args={[1, 1, 1]} />
-            {galleryGoldMaterial()}
-          </mesh>
-          <DisplayText3D text="BURNS LEFT" position={[0, 0.245, 0.125]} size={0.095} color="#5c3d2a" align="center" depth={0.028} />
-          <DisplayText3D text="GOLD SEAL" position={[-0.92, 0.015, 0.13]} size={0.095} color="#8a5a24" depth={0.032} />
-          {/* Five seal slots — filled gold = still available, hollow = used */}
-          {[0, 1, 2, 3, 4].map((index) => (
-            <group key={`plaque-seal-${index}`} position={[0.28 + index * 0.165, 0.045, 0.128]}>
-              <mesh scale={[0.062, 0.062, 1]}>
-                <ringGeometry args={[0.7, 1, 22]} />
-                {mcmPanelInkMaterial()}
-              </mesh>
-              <mesh scale={[0.048, 0.048, 1]}>
-                <circleGeometry args={[1, 22]} />
-                {index < sealsLeft ? galleryGoldMaterial() : galleryCreamMaterial()}
-              </mesh>
+          {burn2Open ? (
+            <mesh position={[0, -0.13, 0.116]} scale={[1.78, 0.018, 0.018]}>
+              <boxGeometry args={[1, 1, 1]} />
+              {galleryGoldMaterial()}
+            </mesh>
+          ) : null}
+          <DisplayText3D text="BURN STATUS" position={[0, 0.245, 0.125]} size={0.095} color="#5c3d2a" align="center" depth={0.028} />
+          {burn2Open ? (
+            <group>
+              <DisplayText3D text="BURN 2 FCFS" position={[-0.92, 0.015, 0.13]} size={0.082} color="#8a5a24" depth={0.032} />
+              {/* Five FCFS slots — filled gold = still available, hollow = taken */}
+              {[0, 1, 2, 3, 4].map((index) => (
+                <group key={`plaque-seal-${index}`} position={[0.28 + index * 0.165, 0.045, 0.128]}>
+                  <mesh scale={[0.062, 0.062, 1]}>
+                    <ringGeometry args={[0.7, 1, 22]} />
+                    {mcmPanelInkMaterial()}
+                  </mesh>
+                  <mesh scale={[0.048, 0.048, 1]}>
+                    <circleGeometry args={[1, 22]} />
+                    {index < sealsLeft ? galleryGoldMaterial() : galleryCreamMaterial()}
+                  </mesh>
+                </group>
+              ))}
             </group>
-          ))}
-          <DisplayText3D text="OPEN EDITION" position={[-0.92, -0.27, 0.13]} size={0.078} color="#2f7168" depth={0.032} />
+          ) : null}
+          <DisplayText3D text="24 HOURS OE" position={[-0.92, burn2Open ? -0.27 : -0.06, 0.13]} size={0.078} color="#2f7168" depth={0.032} />
           <DisplayText3D
             text={burn1Open ? 'OPEN' : 'CLOSED'}
-            position={[0.92, -0.282, 0.132]}
+            position={[0.92, burn2Open ? -0.282 : -0.072, 0.132]}
             size={burn1Open ? 0.122 : 0.096}
             color={burn1Open ? '#2f7168' : '#c43426'}
             align="right"
@@ -6863,11 +6874,13 @@ function BurnLaunchButtonLabel({ hovered }: { hovered: boolean }) {
 }
 
 function MuseumBurnCatalogSelector({
+  items,
   selectedItemId,
   availableBoxCount,
   soldOutItemIds,
   onSelect,
 }: {
+  items: readonly BurnCatalogItem[]
   selectedItemId: BurnCatalogItemId
   availableBoxCount: number
   soldOutItemIds: readonly BurnCatalogItemId[]
@@ -6940,7 +6953,7 @@ function MuseumBurnCatalogSelector({
         <RoundedBox args={[3.32, 1.24, 0.16]} radius={0.14} smoothness={6} position={[0, 0, 0]}>
           {walletPlaqueWalnutMaterial()}
         </RoundedBox>
-        {BURN_CATALOG_ITEMS.map((item, index) => (
+        {items.map((item, index) => (
           <MuseumBurnCatalogOption
             key={item.id}
             item={item}
@@ -6949,7 +6962,7 @@ function MuseumBurnCatalogSelector({
             pressed={pressedOption === item.id}
             availableBoxCount={availableBoxCount}
             soldOut={soldOutItemIds.includes(item.id)}
-            x={index === 0 ? -0.84 : 0.84}
+            x={items.length === 1 ? 0 : index === 0 ? -0.84 : 0.84}
             y={0}
             onSelect={() => {
               clickPulse.current = 1
@@ -8023,7 +8036,7 @@ function MuseumArtPreviewImage({ item }: { item: BurnCatalogItem }) {
       context.fillRect(304, 770, 416, 54)
       context.fillStyle = '#17121f'
       context.font = '900 42px Arial Black, Georgia, serif'
-      context.fillText('GOLD SEAL', 512, 798)
+      context.fillText('BURN 2 FCFS', 512, 798)
     } else {
       context.fillStyle = '#17121f'
       context.fillRect(138, 132, 748, 762)
@@ -8043,10 +8056,10 @@ function MuseumArtPreviewImage({ item }: { item: BurnCatalogItem }) {
       context.lineWidth = 20
       context.strokeRect(210, 208, 596, 612)
       context.fillStyle = '#17121f'
-      context.font = '900 76px Arial Black, Georgia, serif'
+      context.font = '900 66px Arial Black, Georgia, serif'
       context.textAlign = 'center'
       context.textBaseline = 'middle'
-      context.fillText('MUSEUM TAG', 512, 710)
+      context.fillText('24 HOURS OE', 512, 710)
       context.fillStyle = '#d6b55b'
       context.beginPath()
       context.arc(690, 594, 78, 0, Math.PI * 2)
@@ -8345,6 +8358,7 @@ export function VacuumBurnRoomExperience({
   onBurnRequested,
   burn2Remaining = 5,
   burn1Open = true,
+  burn2Open = true,
   timerEnd,
   eventLive = true,
   slideshowItems,
@@ -8379,6 +8393,9 @@ export function VacuumBurnRoomExperience({
     controlledAvailableBoxCount === undefined ? 0 : DEMO_WALLET_BOX_COUNT - controlledVisibleBoxCount
   const committedHiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, externalHiddenWalletBoxCount + burnedWalletBoxCount)
   const soldOutItemIds = controlledSoldOutItemIds ?? (devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : [])
+  // Burn 2 (FCFS) is hidden entirely while its phase isn't live — not shown
+  // as sold out. The tier-1 open edition button is always in the catalog.
+  const visibleCatalogItems = burn2Open ? BURN_CATALOG_ITEMS : BURN_CATALOG_ITEMS.filter((item) => item.boxCost !== 2)
   const hiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, committedHiddenWalletBoxCount + runCompletedBurnCount)
   const availableWalletBoxCount = Math.max(0, DEMO_WALLET_BOX_COUNT - hiddenWalletBoxCount)
 
@@ -8411,6 +8428,14 @@ export function VacuumBurnRoomExperience({
   // The burn ritual animation only plays once the wallet signature has gone
   // through (signedTxKey changes to a new, truthy value). Until then the
   // item is just "armed" — no visuals play yet.
+  // If burn 2 closes while its option is selected or open in the detail
+  // window, snap back to the always-available tier-1 option.
+  useEffect(() => {
+    if (burn2Open) return
+    if (selectedBurnItemId === 'gilded-seal') setSelectedBurnItemId(DEFAULT_BURN_CATALOG_ITEM_ID)
+    if (burnDetailItemId === 'gilded-seal') setBurnDetailItemId(null)
+  }, [burn2Open, selectedBurnItemId, burnDetailItemId])
+
   useEffect(() => {
     if (!signedTxKey || signedTxKey === previousSignedTxKeyRef.current) return
     previousSignedTxKeyRef.current = signedTxKey
@@ -8423,7 +8448,7 @@ export function VacuumBurnRoomExperience({
   }, [signedTxKey])
 
   return (
-    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open, timerEnd: timerEnd ?? null }}>
+    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open, burn2Open, timerEnd: timerEnd ?? null }}>
     <div
       style={{
         position: 'fixed',
@@ -8550,6 +8575,7 @@ export function VacuumBurnRoomExperience({
         ) : null}
         {eventLive && walletConnected && burnDetailItemId === null && burnPickerOpen ? (
           <MuseumBurnCatalogSelector
+            items={visibleCatalogItems}
             selectedItemId={selectedBurnItemId}
             availableBoxCount={availableWalletBoxCount}
             soldOutItemIds={soldOutItemIds}
