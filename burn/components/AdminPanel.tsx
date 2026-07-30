@@ -42,7 +42,6 @@ export function AdminPanel() {
   const [status,          setStatus]          = useState<BurnStatus | null>(null);
   const [loading,         setLoading]         = useState('');
   const [msg,             setMsg]             = useState('');
-  const [reminting,       setReminting]       = useState(false);
   const [liveToggling,    setLiveToggling]    = useState(false);
   const [timerRunning,    setTimerRunning]    = useState(false);
   const [slideshowText,   setSlideshowText]   = useState('');
@@ -120,18 +119,6 @@ export function AdminPanel() {
       </div>
     );
   }
-
-  const remintAll = async () => {
-    setReminting(true); setMsg('');
-    try {
-      const r    = await fetch('/api/admin/remint', { method: 'POST', headers: adminHeaders() });
-      const data = await r.json();
-      const ok   = data.results?.filter((x: { status: string }) => x.status === 'minted').length ?? 0;
-      const fail = data.results?.filter((x: { status: string }) => x.status === 'failed').length ?? 0;
-      setMsg(`Remint done: ${ok} minted, ${fail} failed`);
-    } catch (e: unknown) { setMsg((e as Error).message); }
-    finally { setReminting(false); }
-  };
 
   const toggleEventLive = async () => {
     if (!status) return;
@@ -330,16 +317,6 @@ export function AdminPanel() {
         onClick={exportCSV}
       >
         ↓ EXPORT BURNS CSV
-      </button>
-
-      {/* Remint */}
-      <button
-        className="w-full py-3 border border-yellow-700/50 text-yellow-400 text-xs tracking-widest
-                   hover:bg-yellow-900/20 transition disabled:opacity-40"
-        disabled={reminting}
-        onClick={remintAll}
-      >
-        {reminting ? 'MINTING…' : '🔥 REMINT AIRDROP TO ALL BURNS'}
       </button>
 
       {/* NFT slideshow */}
