@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState, type MutableRefObject } fr
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { OutlineMesh } from '../render/OutlineMesh'
+import { BeachEnvironment } from './BeachEnvironment'
 import type { FontData } from '@react-three/drei'
 import helvetikerBoldJson from 'three/examples/fonts/helvetiker_bold.typeface.json'
 import { getToonRampTexture } from '../shaders/toonRamp'
@@ -637,31 +638,21 @@ function pointerHitAreaMaterial() {
   return <meshBasicMaterial color="#ffffff" transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
 }
 
+// Cursor materials match the museum homepage's arrow cursor: white toon face,
+// ink outline, always drawn on top (depthTest off) so it never clips scenery.
 function cursorInkMaterial({ opacity = 1 }: { opacity?: number } = {}) {
   return <meshBasicMaterial color="#17121f" transparent={opacity < 1} opacity={opacity} depthWrite={false} depthTest={false} toneMapped={false} />
 }
 
-function cursorGloveMaterial() {
-  return <meshToonMaterial color="#fff0c8" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
+function cursorFaceMaterial() {
+  return <meshToonMaterial color="#ffffff" depthWrite={false} depthTest={false} />
 }
 
-function cursorGloveShadeMaterial() {
-  return <meshToonMaterial color="#e5ba72" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
+function cursorShadeMaterial() {
+  return <meshToonMaterial color="#d7d1c5" depthWrite={false} depthTest={false} />
 }
 
-function cursorCuffMaterial() {
-  return <meshToonMaterial color="#2f7168" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
-}
-
-function cursorCuffInsetMaterial() {
-  return <meshToonMaterial color="#9fd7cc" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
-}
-
-function cursorBrassMaterial() {
-  return <meshToonMaterial color="#d6b55b" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
-}
-
-function cursorGlowMaterial({ color = '#fff1a2', opacity = 0.22 }: { color?: string; opacity?: number } = {}) {
+function cursorGlowMaterial({ color = '#ffffff', opacity = 0.22 }: { color?: string; opacity?: number } = {}) {
   return <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} depthTest={false} toneMapped={false} side={THREE.DoubleSide} />
 }
 
@@ -2057,7 +2048,9 @@ function InspectionCamera() {
 
   useEffect(() => {
     const narrow = size.width / Math.max(1, size.height) < 0.72
-    camera.position.set(narrow ? 1.14 : 1.45, narrow ? 6.4 : 6.1, narrow ? 15.0 : 12.5)
+    // Pulled back slightly from the pre-beach framing so a strip of sand,
+    // shore, and props reads around the hut by default.
+    camera.position.set(narrow ? 1.14 : 1.55, narrow ? 6.6 : 6.35, narrow ? 16.4 : 14.3)
     camera.lookAt(...BOX_TARGET)
     camera.updateProjectionMatrix()
   }, [camera, size.height, size.width])
@@ -3106,12 +3099,11 @@ function useBurn1Countdown(timerEnd: string | null) {
 
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const { burn2Remaining, burn1Open, timerEnd } = React.useContext(BurnStatusContext)
-  const goldSealCount = `${burn2Remaining} / 5`
-  const countdown     = useBurn1Countdown(timerEnd)
-  // When timer is active show HH:MM:SS, otherwise OPEN / CLOSED
-  const tagDisplay    = timerEnd && burn1Open ? countdown : (burn1Open ? 'OPEN' : 'CLOSED')
-  const tagColor      = burn1Open ? '#2f7168' : '#c43426'
-  const tagSize       = timerEnd && burn1Open ? 0.082 : (burn1Open ? 0.122 : 0.096)
+  const countdown = useBurn1Countdown(timerEnd)
+  // Timer live → the plaque becomes a framed countdown painting for the
+  // 24h open edition. Otherwise → refined gold seal 5-slot display.
+  const timerLive = !!timerEnd && burn1Open && countdown !== '' && countdown !== 'CLOSED'
+  const sealsLeft = Math.max(0, Math.min(5, burn2Remaining))
 
   return (
     <group position={[ROOM_CENTER_X + 0.18, 1.9, wallFaceZ + 0.092]} renderOrder={20}>
@@ -3165,33 +3157,84 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
           </mesh>
         </group>
       ))}
-      <mesh position={[0, 0.18, 0.116]} scale={[1.78, 0.018, 0.018]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {galleryGoldMaterial()}
-      </mesh>
-      <mesh position={[0, -0.13, 0.116]} scale={[1.78, 0.018, 0.018]}>
-        <boxGeometry args={[1, 1, 1]} />
-        {galleryGoldMaterial()}
-      </mesh>
-      <DisplayText3D text="BURNS LEFT" position={[0, 0.245, 0.125]} size={0.095} color="#5c3d2a" align="center" depth={0.028} />
-      <DisplayText3D text="GOLD SEAL" position={[-0.92, 0.015, 0.13]} size={0.095} color="#8a5a24" depth={0.032} />
-      <DisplayText3D
-        text={goldSealCount}
-        position={[0.92, 0.002, 0.132]}
-        size={0.12}
-        color={burn2Remaining > 0 ? '#c49a12' : '#c43426'}
-        align="right"
-        depth={0.04}
-      />
-      <DisplayText3D text="OPEN EDITION" position={[-0.92, -0.27, 0.13]} size={0.078} color="#2f7168" depth={0.032} />
-      <DisplayText3D
-        text={tagDisplay}
-        position={[0.92, -0.282, 0.132]}
-        size={tagSize}
-        color={tagColor}
-        align="right"
-        depth={0.04}
-      />
+      {timerLive ? (
+        <group>
+          {/* Painted sun, top-left of the canvas */}
+          <group position={[-0.86, 0.18, 0.1]}>
+            <mesh scale={[0.1, 0.1, 1]}>
+              <circleGeometry args={[1, 26]} />
+              {galleryGoldMaterial()}
+            </mesh>
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => (
+              <mesh
+                key={`plaque-sun-ray-${index}`}
+                position={[Math.cos(index * Math.PI / 4) * 0.155, Math.sin(index * Math.PI / 4) * 0.155, 0]}
+                rotation={[0, 0, index * Math.PI / 4]}
+                scale={[0.052, 0.016, 0.012]}
+              >
+                <boxGeometry args={[1, 1, 1]} />
+                {galleryGoldMaterial()}
+              </mesh>
+            ))}
+          </group>
+          {/* Painted waves, bottom-right */}
+          {[0, 1, 2].map((index) => (
+            <mesh
+              key={`plaque-wave-${index}`}
+              position={[0.56 + index * 0.19, -0.315 + (index % 2) * 0.015, 0.1]}
+              scale={[0.105, 0.055, 1]}
+            >
+              <ringGeometry args={[0.58, 1, 18, 1, 0, Math.PI]} />
+              {galleryTealMaterial()}
+            </mesh>
+          ))}
+          <DisplayText3D text="OPEN EDITION" position={[0, 0.26, 0.125]} size={0.085} color="#8a5a24" align="center" depth={0.028} />
+          <DisplayText3D
+            text={countdown}
+            position={[0, -0.055, 0.132]}
+            size={0.2}
+            color="#2f7168"
+            align="center"
+            depth={0.048}
+          />
+          <DisplayText3D text="24 HOUR BURN - 1 PER WALLET" position={[0, -0.315, 0.125]} size={0.052} color="#5c3d2a" align="center" depth={0.02} />
+        </group>
+      ) : (
+        <group>
+          <mesh position={[0, 0.18, 0.116]} scale={[1.78, 0.018, 0.018]}>
+            <boxGeometry args={[1, 1, 1]} />
+            {galleryGoldMaterial()}
+          </mesh>
+          <mesh position={[0, -0.13, 0.116]} scale={[1.78, 0.018, 0.018]}>
+            <boxGeometry args={[1, 1, 1]} />
+            {galleryGoldMaterial()}
+          </mesh>
+          <DisplayText3D text="BURNS LEFT" position={[0, 0.245, 0.125]} size={0.095} color="#5c3d2a" align="center" depth={0.028} />
+          <DisplayText3D text="GOLD SEAL" position={[-0.92, 0.015, 0.13]} size={0.095} color="#8a5a24" depth={0.032} />
+          {/* Five seal slots — filled gold = still available, hollow = used */}
+          {[0, 1, 2, 3, 4].map((index) => (
+            <group key={`plaque-seal-${index}`} position={[0.28 + index * 0.165, 0.045, 0.128]}>
+              <mesh scale={[0.062, 0.062, 1]}>
+                <ringGeometry args={[0.7, 1, 22]} />
+                {mcmPanelInkMaterial()}
+              </mesh>
+              <mesh scale={[0.048, 0.048, 1]}>
+                <circleGeometry args={[1, 22]} />
+                {index < sealsLeft ? galleryGoldMaterial() : galleryCreamMaterial()}
+              </mesh>
+            </group>
+          ))}
+          <DisplayText3D text="OPEN EDITION" position={[-0.92, -0.27, 0.13]} size={0.078} color="#2f7168" depth={0.032} />
+          <DisplayText3D
+            text={burn1Open ? 'OPEN' : 'CLOSED'}
+            position={[0.92, -0.282, 0.132]}
+            size={burn1Open ? 0.122 : 0.096}
+            color={burn1Open ? '#2f7168' : '#c43426'}
+            align="right"
+            depth={0.04}
+          />
+        </group>
+      )}
     </group>
   )
 }
@@ -6166,46 +6209,6 @@ function GroundTrapdoor({
   )
 }
 
-function CursorJuiceSparkle({
-  position,
-  phase,
-  scale = 1,
-  color = '#fff1a2',
-}: {
-  position: [number, number, number]
-  phase: number
-  scale?: number
-  color?: string
-}) {
-  const root = useRef<THREE.Group>(null)
-
-  useFrame(({ clock }) => {
-    const rootNode = root.current
-    if (!rootNode) return
-
-    const t = clock.elapsedTime + phase
-    const pulse = (Math.sin(t * 5.4) + 1) * 0.5
-    rootNode.position.set(position[0] + Math.sin(t * 2.8) * 0.012, position[1] + Math.cos(t * 3.2) * 0.014, position[2])
-    rootNode.rotation.set(0, 0, t * 1.45)
-    rootNode.scale.setScalar(scale * (0.56 + pulse * 0.5))
-    rootNode.visible = pulse > 0.12
-  })
-
-  return (
-    <group ref={root} position={position} renderOrder={103}>
-      <RoundedBox args={[0.018, 0.112, 0.018]} radius={0.006} smoothness={3}>
-        {cursorGlowMaterial({ color, opacity: 0.86 })}
-      </RoundedBox>
-      <RoundedBox args={[0.112, 0.018, 0.018]} radius={0.006} smoothness={3}>
-        {cursorGlowMaterial({ color, opacity: 0.86 })}
-      </RoundedBox>
-      <RoundedBox args={[0.052, 0.052, 0.016]} radius={0.012} smoothness={3} rotation={[0, 0, Math.PI / 4]}>
-        {cursorBrassMaterial()}
-      </RoundedBox>
-    </group>
-  )
-}
-
 function MuseumToonCursor() {
   const root = useRef<THREE.Group>(null)
   const body = useRef<THREE.Group>(null)
@@ -6226,7 +6229,7 @@ function MuseumToonCursor() {
   const clickPulse = useRef(0)
   const isPressed = useRef(false)
   const hasPointer = useRef(false)
-  // Touch devices have no persistent pointer — showing the glove there leaves
+  // Touch devices have no persistent pointer — showing the arrow there leaves
   // it stranded wherever the last tap landed, so it's mouse/trackpad only.
   const finePointer = useMemo(
     () => typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches,
@@ -6234,26 +6237,23 @@ function MuseumToonCursor() {
   )
   const cursorGeometry = useMemo(() => {
     const shape = new THREE.Shape()
-    shape.moveTo(0.035, 0.142)
-    shape.bezierCurveTo(0.018, 0.164, -0.022, 0.16, -0.044, 0.116)
-    shape.lineTo(-0.112, -0.016)
-    shape.bezierCurveTo(-0.076, -0.014, -0.038, -0.01, -0.006, -0.002)
-    shape.lineTo(-0.071, -0.216)
-    shape.bezierCurveTo(-0.08, -0.248, -0.136, -0.236, -0.128, -0.202)
-    shape.lineTo(-0.191, -0.18)
-    shape.lineTo(-0.135, -0.026)
-    shape.lineTo(-0.272, -0.054)
-    shape.bezierCurveTo(-0.326, -0.064, -0.34, -0.01, -0.286, 0.011)
-    shape.lineTo(-0.094, 0.094)
-    shape.bezierCurveTo(-0.048, 0.116, -0.006, 0.132, 0.035, 0.142)
+    // Local origin is the click hotspot: the visible arrow tip.
+    shape.moveTo(0, 0)
+    shape.lineTo(0.018, -0.292)
+    shape.lineTo(0.096, -0.218)
+    shape.lineTo(0.152, -0.354)
+    shape.lineTo(0.226, -0.324)
+    shape.lineTo(0.17, -0.188)
+    shape.lineTo(0.292, -0.188)
+    shape.lineTo(0, 0)
     const geometry = new THREE.ExtrudeGeometry(shape, {
-      depth: 0.052,
+      depth: 0.068,
       bevelEnabled: true,
-      bevelThickness: 0.014,
-      bevelSize: 0.012,
-      bevelSegments: 3,
+      bevelThickness: 0.015,
+      bevelSize: 0.011,
+      bevelSegments: 4,
     })
-    geometry.translate(0, 0, -0.026)
+    geometry.translate(0, 0, -0.034)
     geometry.computeVertexNormals()
     return geometry
   }, [])
@@ -6346,50 +6346,51 @@ function MuseumToonCursor() {
     rootNode.visible = pointerVisible.current > 0.025
     rootNode.position.copy(targetPosition)
     rootNode.quaternion.copy(camera.quaternion)
-    rootNode.scale.setScalar(size.width < 620 ? 0.56 : 0.68)
+    rootNode.scale.setScalar(size.width < 620 ? 0.3 : 0.37)
 
     const t = clock.elapsedTime
     const clickBounce = clickPulse.current > 0 ? Math.sin((1 - clickPulse.current) * Math.PI) * clickPulse.current : 0
     const hover = hoverAmount.current
     const press = pressAmount.current
-    const movementSquash = Math.min(0.14, pointerSpeed * 0.028)
-    const idleWiggle = Math.sin(t * 5.6) * 0.012 + Math.sin(t * 9.3) * 0.006
-    bodyNode.position.set(-0.018 + Math.sin(t * 2.4) * 0.006, -0.022 + Math.cos(t * 2.1) * 0.006, 0)
+    const movementSquash = Math.min(0.1, pointerSpeed * 0.02)
+    const idleWiggle = Math.sin(t * 5.6) * 0.007 + Math.sin(t * 9.3) * 0.004
+
+    bodyNode.position.set(0, 0, 0)
     bodyNode.rotation.set(
       0,
       0,
-      -0.24 + idleWiggle + hover * -0.08 + press * 0.1 + clickBounce * -0.16 + Math.min(0.18, pointerSpeed * 0.012),
+      idleWiggle + hover * -0.026 + press * 0.042 + clickBounce * -0.055 + Math.min(0.055, pointerSpeed * 0.0035),
     )
     bodyNode.scale.set(
-      1 + hover * 0.08 + clickBounce * 0.16 + movementSquash,
-      1 + hover * 0.045 - press * 0.15 - movementSquash * 0.55 + clickBounce * 0.05,
-      1 + hover * 0.04 + press * 0.1,
+      1 + hover * 0.045 + clickBounce * 0.09 + movementSquash * 0.34,
+      1 + hover * 0.026 - press * 0.1 - movementSquash * 0.18 + clickBounce * 0.034,
+      1 + hover * 0.06 + press * 0.08 + clickBounce * 0.08,
     )
 
-    const trailOpacity = Math.min(0.34, 0.08 + pointerSpeed * 0.05 + hover * 0.08 + clickBounce * 0.2)
+    const trailOpacity = Math.min(0.32, 0.06 + pointerSpeed * 0.045 + hover * 0.07 + clickBounce * 0.18)
     if (trailA.current) {
-      trailA.current.position.set(-0.16 - pointerSpeed * 0.016, -0.1, -0.055)
-      trailA.current.scale.set(0.16 + pointerSpeed * 0.01, 0.072 + hover * 0.02, 1)
+      trailA.current.position.set(0.108 + pointerSpeed * 0.007, -0.152, -0.055)
+      trailA.current.scale.set(0.07 + pointerSpeed * 0.004, 0.032 + hover * 0.008, 1)
       const material = trailA.current.material as THREE.MeshBasicMaterial
       material.opacity = trailOpacity
     }
     if (trailB.current) {
-      trailB.current.position.set(-0.24 - pointerSpeed * 0.02, -0.04, -0.06)
-      trailB.current.scale.set(0.12 + pointerSpeed * 0.008, 0.046 + hover * 0.012, 1)
+      trailB.current.position.set(0.155 + pointerSpeed * 0.008, -0.086, -0.06)
+      trailB.current.scale.set(0.05 + pointerSpeed * 0.003, 0.024 + hover * 0.006, 1)
       const material = trailB.current.material as THREE.MeshBasicMaterial
       material.opacity = trailOpacity * 0.6
     }
     if (tipGlow.current) {
-      tipGlow.current.scale.setScalar(0.052 + hover * 0.028 + clickBounce * 0.07)
+      tipGlow.current.scale.setScalar(0.028 + hover * 0.018 + clickBounce * 0.056)
       const material = tipGlow.current.material as THREE.MeshBasicMaterial
-      material.opacity = 0.16 + hover * 0.2 + clickBounce * 0.35
+      material.opacity = 0.12 + hover * 0.16 + clickBounce * 0.32
     }
     if (clickRing.current) {
       const ringT = 1 - clickPulse.current
       clickRing.current.visible = clickPulse.current > 0.02
-      clickRing.current.scale.setScalar(0.12 + ringT * 0.56)
+      clickRing.current.scale.setScalar(0.075 + ringT * 0.38)
       const material = clickRing.current.material as THREE.MeshBasicMaterial
-      material.opacity = Math.max(0, clickPulse.current * 0.42)
+      material.opacity = Math.max(0, clickPulse.current * 0.5)
     }
   })
 
@@ -6398,46 +6399,36 @@ function MuseumToonCursor() {
   return (
     <group ref={root} visible={false} renderOrder={100}>
       <group ref={body}>
-        <mesh ref={trailA} position={[-0.18, -0.1, -0.055]} rotation={[0, 0, 0.15]} renderOrder={96}>
+        <mesh ref={trailA} position={[0.16, -0.18, -0.055]} rotation={[0, 0, -0.35]} renderOrder={96}>
           <circleGeometry args={[1, 28]} />
-          {cursorGlowMaterial({ color: '#ffe58a', opacity: 0.18 })}
+          {cursorGlowMaterial({ color: '#fff8ee', opacity: 0.18 })}
         </mesh>
-        <mesh ref={trailB} position={[-0.28, -0.04, -0.06]} rotation={[0, 0, -0.18]} renderOrder={95}>
+        <mesh ref={trailB} position={[0.24, -0.1, -0.06]} rotation={[0, 0, -0.22]} renderOrder={95}>
           <circleGeometry args={[1, 24]} />
-          {cursorGlowMaterial({ color: '#9fd7cc', opacity: 0.08 })}
+          {cursorGlowMaterial({ color: '#fff1bd', opacity: 0.08 })}
         </mesh>
-        <mesh geometry={cursorGeometry} scale={[1.2, 1.2, 1.12]} position={[0, 0, -0.026]} renderOrder={98}>
+        <mesh geometry={cursorGeometry} scale={[1.12, 1.12, 1.1]} position={[0, 0, -0.032]} renderOrder={98}>
           {cursorInkMaterial()}
         </mesh>
         <mesh geometry={cursorGeometry} renderOrder={101}>
-          {cursorGloveMaterial()}
+          {cursorFaceMaterial()}
         </mesh>
-        <mesh geometry={cursorGeometry} scale={[0.58, 0.44, 1]} position={[-0.15, -0.102, 0.03]} rotation={[0, 0, 0.06]} renderOrder={102}>
-          {cursorGloveShadeMaterial()}
+        <mesh position={[0.08, -0.13, 0.08]} rotation={[0, 0, -1.02]} scale={[0.07, 0.011, 0.024]} renderOrder={104}>
+          <boxGeometry args={[1, 1, 1]} />
+          {cursorGlowMaterial({ color: '#ffffff', opacity: 0.66 })}
         </mesh>
-        <mesh ref={tipGlow} position={[0.018, 0.127, 0.054]} renderOrder={105}>
+        <mesh position={[0.157, -0.255, 0.058]} rotation={[0, 0, 0.38]} scale={[0.05, 0.01, 0.02]} renderOrder={100}>
+          <boxGeometry args={[1, 1, 1]} />
+          {cursorShadeMaterial()}
+        </mesh>
+        <mesh ref={tipGlow} position={[0, 0, 0.072]} renderOrder={105}>
           <circleGeometry args={[1, 28]} />
-          {cursorGlowMaterial({ color: '#fff7b8', opacity: 0.22 })}
+          {cursorGlowMaterial({ color: '#ffffff', opacity: 0.22 })}
         </mesh>
-        <mesh ref={clickRing} position={[0.018, 0.127, 0.036]} renderOrder={104} visible={false}>
+        <mesh ref={clickRing} position={[0, 0, 0.06]} renderOrder={104} visible={false}>
           <ringGeometry args={[0.68, 1, 42]} />
-          {cursorGlowMaterial({ color: '#fff1a2', opacity: 0.28 })}
+          {cursorGlowMaterial({ color: '#ffffff', opacity: 0.28 })}
         </mesh>
-        <RoundedBox args={[0.21, 0.13, 0.08]} radius={0.04} smoothness={5} position={[-0.203, -0.23, 0.006]} rotation={[0, 0, -0.34]} renderOrder={101}>
-          {cursorInkMaterial()}
-        </RoundedBox>
-        <RoundedBox args={[0.18, 0.1, 0.075]} radius={0.034} smoothness={5} position={[-0.204, -0.228, 0.045]} rotation={[0, 0, -0.34]} renderOrder={102}>
-          {cursorCuffMaterial()}
-        </RoundedBox>
-        <RoundedBox args={[0.12, 0.04, 0.082]} radius={0.018} smoothness={4} position={[-0.186, -0.197, 0.087]} rotation={[0, 0, -0.34]} renderOrder={103}>
-          {cursorCuffInsetMaterial()}
-        </RoundedBox>
-        <RoundedBox args={[0.235, 0.035, 0.09]} radius={0.015} smoothness={4} position={[-0.215, -0.157, 0.088]} rotation={[0, 0, -0.34]} renderOrder={104}>
-          {cursorBrassMaterial()}
-        </RoundedBox>
-        <CursorJuiceSparkle position={[-0.29, 0.12, 0.07]} phase={0.2} scale={0.72} color="#fff1a2" />
-        <CursorJuiceSparkle position={[-0.38, -0.13, 0.072]} phase={1.5} scale={0.48} color="#9fd7cc" />
-        <CursorJuiceSparkle position={[0.04, -0.16, 0.074]} phase={2.6} scale={0.54} color="#ffd47a" />
       </group>
     </group>
   )
@@ -8440,17 +8431,19 @@ export function VacuumBurnRoomExperience({
         width: '100vw',
         height: '100dvh',
         overflow: 'hidden',
-        background: '#aec9bf',
+        background: '#a9e2ec',
         cursor: 'none',
       }}
     >
       <Canvas
         dpr={[1.5, 2]}
-        camera={{ fov: 41, position: [1.45, 6.1, 12.5], near: 0.1, far: 30 }}
+        camera={{ fov: 41, position: [1.45, 6.1, 12.5], near: 0.1, far: 160 }}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         style={{ cursor: 'none' }}
       >
-        <color attach="background" args={['#aec9bf']} />
+        <color attach="background" args={['#a9e2ec']} />
+        <fog attach="fog" args={['#d9efdf', 26, 95]} />
+        <BeachEnvironment />
         <InspectionCamera />
         <KeyboardCameraControls controlsRef={orbitControlsRef} />
         <RitualRunController
@@ -8605,11 +8598,11 @@ export function VacuumBurnRoomExperience({
           dampingFactor={0.12}
           enablePan={false}
           minDistance={2.8}
-          maxDistance={22}
+          maxDistance={30}
           minPolarAngle={0.25}
           maxPolarAngle={Math.PI * 0.5}
-          minAzimuthAngle={-0.5}
-          maxAzimuthAngle={0.5}
+          minAzimuthAngle={-0.85}
+          maxAzimuthAngle={0.85}
         />
       </Canvas>
       {showDevSoldOutSwitch ? (
