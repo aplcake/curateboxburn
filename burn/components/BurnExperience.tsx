@@ -382,7 +382,7 @@ function ComingSoonOverlay() {
 
 function RoomLoader() {
   return (
-    <div className="fixed inset-0 bg-[#aec9bf] flex items-center justify-center">
+    <div className="fixed inset-0 bg-[#a9e2ec] flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-[#17121f]/30 border-t-[#17121f] rounded-full animate-spin" />
     </div>
   );
@@ -390,7 +390,7 @@ function RoomLoader() {
 
 function WebGLError() {
   return (
-    <div className="fixed inset-0 bg-[#aec9bf] flex items-center justify-center p-6">
+    <div className="fixed inset-0 bg-[#a9e2ec] flex items-center justify-center p-6">
       <div className="max-w-sm w-full bg-[#d4dde0] border-4 border-[#17121f] p-6 shadow-[4px_4px_0_#17121f] text-center">
         <p className="font-bold text-[#17121f] text-lg mb-2">WebGL Unavailable</p>
         <p className="text-[#17121f]/70 text-sm mb-4">
