@@ -300,16 +300,17 @@ function beltMaterial() {
   return <meshToonMaterial color="#23202e" gradientMap={getToonRampTexture()} />
 }
 
+// Beach-hut palette: plank floor, sun-bleached bamboo walls.
 function roomFloorMaterial() {
-  return <meshToonMaterial color="#bec8bd" gradientMap={getToonRampTexture()} />
+  return <meshToonMaterial color="#c9955e" gradientMap={getToonRampTexture()} />
 }
 
 function roomWallMaterial() {
-  return <meshToonMaterial color="#dfe3d3" gradientMap={getToonRampTexture()} />
+  return <meshToonMaterial color="#ecdcb2" gradientMap={getToonRampTexture()} />
 }
 
 function roomSideWallMaterial() {
-  return <meshToonMaterial color="#bfccc1" gradientMap={getToonRampTexture()} />
+  return <meshToonMaterial color="#ddc38f" gradientMap={getToonRampTexture()} />
 }
 
 function roomTrimMaterial() {
@@ -317,7 +318,7 @@ function roomTrimMaterial() {
 }
 
 function roomFloorLineMaterial() {
-  return <meshBasicMaterial color="#66766f" transparent opacity={0.24} />
+  return <meshBasicMaterial color="#8a5a30" transparent opacity={0.34} />
 }
 
 function roomWoodGrainMaterial() {
@@ -325,7 +326,7 @@ function roomWoodGrainMaterial() {
 }
 
 function roomUpperWallLineMaterial() {
-  return <meshBasicMaterial color="#73827b" transparent opacity={0.24} />
+  return <meshBasicMaterial color="#b09364" transparent opacity={0.28} />
 }
 
 function roomWallContactShadowMaterial() {
@@ -724,20 +725,20 @@ function burnLaunchRedMaterial({ hovered }: { hovered: boolean }) {
   return <meshToonMaterial color={hovered ? '#ff5d43' : '#c43426'} gradientMap={getToonRampTexture()} />
 }
 
-function mcmHearthTileMaterial() {
-  return <meshToonMaterial color="#59666a" gradientMap={getToonRampTexture()} />
+function campfireStoneMaterial() {
+  return <meshToonMaterial color="#9a958b" gradientMap={getToonRampTexture()} />
 }
 
-function mcmHearthInsetMaterial() {
-  return <meshToonMaterial color="#30393d" gradientMap={getToonRampTexture()} />
+function campfireStoneDarkMaterial() {
+  return <meshToonMaterial color="#837d72" gradientMap={getToonRampTexture()} />
 }
 
-function mcmHearthLineMaterial() {
-  return <meshBasicMaterial color="#25202a" transparent opacity={0.55} />
+function campfireCharMaterial() {
+  return <meshToonMaterial color="#3a3230" gradientMap={getToonRampTexture()} />
 }
 
-function mcmHearthBrassMaterial() {
-  return <meshBasicMaterial color="#d1b762" />
+function campfireLogMaterial() {
+  return <meshToonMaterial color="#8d6040" gradientMap={getToonRampTexture()} />
 }
 
 function mcmHearthHeatPoolMaterial() {
@@ -779,7 +780,7 @@ function ceilingTrapFrameMaterial() {
 }
 
 function ceilingTrapDoorMaterial() {
-  return <meshToonMaterial color="#728184" gradientMap={getToonRampTexture()} />
+  return <meshToonMaterial color="#8d6b4a" gradientMap={getToonRampTexture()} />
 }
 
 function ceilingTrapRailMaterial() {
@@ -787,7 +788,7 @@ function ceilingTrapRailMaterial() {
 }
 
 function ceilingTrapStrapMaterial() {
-  return <meshToonMaterial color="#536b70" gradientMap={getToonRampTexture()} />
+  return <meshToonMaterial color="#6b533b" gradientMap={getToonRampTexture()} />
 }
 
 function trapWoodGrainMaterial() {
@@ -795,7 +796,7 @@ function trapWoodGrainMaterial() {
 }
 
 function trapDoorMaterial() {
-  return <meshToonMaterial color="#6f7f86" gradientMap={getToonRampTexture()} />
+  return <meshToonMaterial color="#96693f" gradientMap={getToonRampTexture()} />
 }
 
 function trapDarkMaterial() {
@@ -4156,13 +4157,23 @@ function RitualFloorInlay() {
 }
 
 function McmIncineratorNook() {
-  const trimSegments = [
-    { position: [0, 0.038, -0.51] as const, scale: [1.54, 0.02, 0.026] as const },
-    { position: [0, 0.038, 0.51] as const, scale: [1.54, 0.02, 0.026] as const },
-    { position: [-0.79, 0.038, 0] as const, scale: [0.026, 0.02, 0.96] as const },
-    { position: [0.79, 0.038, 0] as const, scale: [0.026, 0.02, 0.96] as const },
-  ] as const
-  const hatchMarks = [-0.45, -0.24, -0.03, 0.18, 0.39] as const
+  // Indoor campfire pit: a ring of stones with log stubs around the trapdoor
+  // the packages drop into — the flame rig underneath is unchanged.
+  const stones = useMemo(() => {
+    const ring: { x: number; z: number; scale: number; dark: boolean; yaw: number }[] = []
+    const count = 13
+    for (let index = 0; index < count; index += 1) {
+      const angle = (index / count) * Math.PI * 2
+      ring.push({
+        x: Math.cos(angle) * (0.93 + (index % 3) * 0.035),
+        z: Math.sin(angle) * (0.62 + (index % 2) * 0.03),
+        scale: 0.105 + ((index * 7) % 5) * 0.014,
+        dark: index % 3 === 0,
+        yaw: angle * 1.7,
+      })
+    }
+    return ring
+  }, [])
 
   return (
     <group position={[TRAPDOOR_POSITION[0], ROOM_FLOOR_Y + 0.016, TRAPDOOR_POSITION[2]]}>
@@ -4170,45 +4181,35 @@ function McmIncineratorNook() {
         <circleGeometry args={[1, 34]} />
         {mcmHearthHeatPoolMaterial()}
       </mesh>
-      <OutlineMesh
-        position={[0, 0, 0]}
-        scale={[1.58, 0.026, 1.02]}
-        outlineWidth={0.014}
-        outlineColor="#211827"
-        geometry={<boxGeometry args={[1, 1, 1]} />}
-        material={mcmHearthTileMaterial()}
-      />
-      <OutlineMesh
-        position={[-0.05, 0.021, 0]}
-        scale={[1.12, 0.018, 0.72]}
-        outlineWidth={0.01}
-        outlineColor="#211827"
-        geometry={<boxGeometry args={[1, 1, 1]} />}
-        material={mcmHearthInsetMaterial()}
-      />
-      {[-0.34, 0, 0.34].map((offset) => (
-        <mesh key={`incinerator-nook-tile-seam-${offset}`} position={[offset, 0.036, 0]} scale={[0.014, 0.008, 0.86]}>
-          <boxGeometry args={[1, 1, 1]} />
-          {mcmHearthLineMaterial()}
-        </mesh>
-      ))}
-      {trimSegments.map(({ position, scale }) => (
-        <mesh key={`incinerator-nook-trim-${position.join('-')}`} position={position} scale={scale}>
-          <boxGeometry args={[1, 1, 1]} />
-          {mcmHearthBrassMaterial()}
-        </mesh>
-      ))}
-      {hatchMarks.map((x, index) => (
+      {/* Scorched patch under the pit */}
+      <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1.02, 0.7, 1]}>
+        <circleGeometry args={[1, 30]} />
+        {campfireCharMaterial()}
+      </mesh>
+      {stones.map((stone, index) => (
         <mesh
-          key={`incinerator-warning-hatch-${x}`}
-          position={[x, 0.044, 0.43]}
-          rotation={[0, index % 2 === 0 ? 0.08 : -0.08, 0]}
-          scale={[0.12, 0.012, 0.018]}
+          key={`campfire-stone-${index}`}
+          position={[stone.x, 0.045, stone.z]}
+          rotation={[0, stone.yaw, 0]}
+          scale={[stone.scale * 1.25, stone.scale * 0.85, stone.scale]}
         >
-          <boxGeometry args={[1, 1, 1]} />
-          {index % 2 === 0 ? mcmHearthBrassMaterial() : trapWoodGrainMaterial()}
+          <sphereGeometry args={[1, 9, 7]} />
+          {stone.dark ? campfireStoneDarkMaterial() : campfireStoneMaterial()}
         </mesh>
       ))}
+      {/* Log stubs poking out from under the stones */}
+      <mesh position={[-0.68, 0.05, 0.5]} rotation={[0.1, 0.7, 1.5]}>
+        <cylinderGeometry args={[0.05, 0.06, 0.5, 7]} />
+        {campfireLogMaterial()}
+      </mesh>
+      <mesh position={[0.74, 0.05, -0.44]} rotation={[-0.08, -0.5, 1.52]}>
+        <cylinderGeometry args={[0.045, 0.055, 0.44, 7]} />
+        {campfireLogMaterial()}
+      </mesh>
+      <mesh position={[0.62, 0.05, 0.52]} rotation={[0.06, -2.2, 1.48]}>
+        <cylinderGeometry args={[0.04, 0.05, 0.4, 7]} />
+        {campfireLogMaterial()}
+      </mesh>
     </group>
   )
 }
