@@ -157,7 +157,8 @@ const verifyBurnTx = async (txHash, expectedTier, attempt = 0) => {
 
     return { wallet: log.args.from, amount };
   } catch (err) {
-    if (attempt < MAX_ATTEMPTS && err.message?.includes('block range')) {
+    const retryable = err.message?.includes('block range') || err.message?.includes('could not be found');
+    if (attempt < MAX_ATTEMPTS && retryable) {
       console.log(`[verify] RPC not ready, retrying in ${DELAY_MS}ms (attempt ${attempt + 1}/${MAX_ATTEMPTS})`);
       await sleep(DELAY_MS);
       return verifyBurnTx(txHash, expectedTier, attempt + 1);
@@ -278,7 +279,14 @@ app.post('/burns', async (req, res) => {
   if (tier === 1 && hasWalletBurned1(verified.wallet))
     return res.status(400).json({ error: 'This wallet has already burned ×1 (one per wallet)' });
 
-  recordBurn(verified.wallet, tier, txHash, verified.amount);
+  try {
+    recordBurn(verified.wallet, tier, txHash, verified.amount);
+  } catch (err) {
+    if (String(err.message).includes('UNIQUE'))
+      return res.status(400).json({ error: 'This wallet has already burned ×1 (one per wallet)' });
+    console.error('recordBurn error:', err.message);
+    return res.status(500).json({ error: 'Failed to record burn — contact admin with your tx hash' });
+  }
   mintManifoldNFT(verified.wallet, tier).catch(() => {});
 
   const fresh = getBurnStatus();

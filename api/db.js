@@ -50,6 +50,13 @@ const CONFIRMED_BURNS = [
   },
 ];
 
+// Hard guarantee: one tier-1 burn per wallet, even under concurrent requests.
+try {
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS one_burn1_per_wallet ON burns(wallet) WHERE tier = 1;`);
+} catch (err) {
+  console.warn('[db] could not create one_burn1_per_wallet index (duplicate tier-1 rows exist?):', err.message);
+}
+
 const insertSeed = db.prepare(`INSERT OR IGNORE INTO burns (wallet, tier, tx_hash, amount) VALUES (?, ?, ?, ?)`);
 for (const b of CONFIRMED_BURNS) {
   const r = insertSeed.run(b.wallet, b.tier, b.tx_hash, b.amount);
