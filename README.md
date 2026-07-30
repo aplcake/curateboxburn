@@ -61,8 +61,11 @@ npm run dev
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | cloud.walletconnect.com |
 | `NEXT_PUBLIC_API_URL` | Railway URL, no trailing slash |
 | `API_URL` | Same as above (server-side) |
-| `ADMIN_API_KEY` | Same as Railway |
 | `NEXT_PUBLIC_ADMIN_WALLETS` | `0xWallet1,0xWallet2` |
+
+> **Admin key:** no longer a Vercel env var. Enter Railway's `ADMIN_API_KEY`
+> once in the `/admin` panel — it's kept in sessionStorage and sent with each
+> admin request, so the admin routes can't be triggered by strangers.
 
 ### 3. Reveal Site (Vercel)
 
@@ -126,9 +129,10 @@ npm run dev -p 3001
 
 ## Admin commands (burn site `/admin`)
 
-- **OPEN / CLOSE BURN 1** — toggles burn ×1 availability
+- **START 24H BURN** — opens burn ×1 and auto-closes it after 24 hours
+- **OPEN / CLOSE BURN 1** — manual toggle for burn ×1 availability
+- **OPEN / CLOSE BURN 2** — manual toggle for burn ×2 (starts **closed** by default; also closes automatically at 5 burns)
 - **EXPORT CSV** — downloads all burn records
-- Burn ×2 closes automatically at 5 burns (no manual action needed)
 
 ---
 

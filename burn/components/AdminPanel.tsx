@@ -4,9 +4,9 @@ import { useState, useEffect } from 'react';
 import { useAccount }           from 'wagmi';
 import { useConnectModal }      from '@rainbow-me/rainbowkit';
 import {
-  adminAction, downloadCSV, getStatus, setEventLive,
-  startBurn1Timer, stopBurn1Timer,
+  adminAction, adminBurn2Action, downloadCSV, getStatus, setEventLive,
   getSlideshow, saveSlideshow,
+  getStoredAdminKey, storeAdminKey, clearAdminKey, adminHeaders,
   type BurnStatus, type SlideshowSaveResult,
 } from '@/lib/api';
 
@@ -48,8 +48,12 @@ export function AdminPanel() {
   const [slideshowText,   setSlideshowText]   = useState('');
   const [slideshowSaving, setSlideshowSaving] = useState(false);
   const [slideshowResults,setSlideshowResults]= useState<SlideshowSaveResult[] | null>(null);
+  const [adminKey,        setAdminKey]        = useState<string | null>(null);
+  const [keyInput,        setKeyInput]        = useState('');
 
   const countdown = useCountdown(status?.timerEnd ?? null);
+
+  useEffect(() => { setAdminKey(getStoredAdminKey()); }, []);
 
   const refresh = async () => { try { setStatus(await getStatus()); } catch {} };
   useEffect(() => { refresh(); }, []);
@@ -82,10 +86,45 @@ export function AdminPanel() {
   }
   if (!isAdmin) return <p className="text-red-500/60 text-sm">Not an admin wallet.</p>;
 
+  // Admin key gate — the key (Railway ADMIN_API_KEY) authorizes every admin
+  // call server-side; the wallet check above is only a UI convenience.
+  if (!adminKey) {
+    return (
+      <div className="flex flex-col gap-3 w-full max-w-sm">
+        <h2 className="text-burn tracking-[0.2em] text-sm font-bold">ADMIN PANEL</h2>
+        <p className="text-xs text-white/40 tracking-wider">
+          Enter the admin key (same value as Railway&apos;s ADMIN_API_KEY).
+        </p>
+        <input
+          type="password"
+          value={keyInput}
+          onChange={(e) => setKeyInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && keyInput.trim()) {
+              storeAdminKey(keyInput.trim());
+              setAdminKey(keyInput.trim());
+            }
+          }}
+          placeholder="admin key"
+          className="w-full bg-black/40 border border-white/10 text-white/80 text-xs font-mono
+                     p-2.5 tracking-wide placeholder:text-white/20 focus:outline-none focus:border-white/30"
+        />
+        <button
+          className="w-full py-2.5 border border-burn/50 text-burn text-xs tracking-widest
+                     hover:bg-burn/10 transition disabled:opacity-40"
+          disabled={!keyInput.trim()}
+          onClick={() => { storeAdminKey(keyInput.trim()); setAdminKey(keyInput.trim()); }}
+        >
+          UNLOCK
+        </button>
+      </div>
+    );
+  }
+
   const remintAll = async () => {
     setReminting(true); setMsg('');
     try {
-      const r    = await fetch('/api/admin/remint', { method: 'POST' });
+      const r    = await fetch('/api/admin/remint', { method: 'POST', headers: adminHeaders() });
       const data = await r.json();
       const ok   = data.results?.filter((x: { status: string }) => x.status === 'minted').length ?? 0;
       const fail = data.results?.filter((x: { status: string }) => x.status === 'failed').length ?? 0;
@@ -108,7 +147,7 @@ export function AdminPanel() {
   const handleTimer = async (action: 'start' | 'stop') => {
     setTimerRunning(true); setMsg('');
     try {
-      const r    = await fetch(`/api/admin/timer/${action}`, { method: 'POST' });
+      const r    = await fetch(`/api/admin/timer/${action}`, { method: 'POST', headers: adminHeaders() });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error);
       setMsg(action === 'start'
@@ -138,6 +177,22 @@ export function AdminPanel() {
       await refresh();
     } catch (e: unknown) { setMsg((e as Error).message); }
     finally { setLoading(''); }
+  };
+
+  const toggleBurn2 = async (action: 'open' | 'close') => {
+    setLoading(`burn2-${action}`); setMsg('');
+    try {
+      await adminBurn2Action(action);
+      setMsg(`Burn 2 ${action === 'open' ? 'opened' : 'closed'} ✓`);
+      await refresh();
+    } catch (e: unknown) { setMsg((e as Error).message); }
+    finally { setLoading(''); }
+  };
+
+  const exportCSV = async () => {
+    setMsg('');
+    try { await downloadCSV(); }
+    catch (e: unknown) { setMsg((e as Error).message); }
   };
 
   const timerActive = !!status?.timerEnd && status.burn1Open;
@@ -174,7 +229,9 @@ export function AdminPanel() {
           <div className="stat-box col-span-2 flex justify-between items-center">
             <span>BURN 2 STATUS</span>
             <span className={status.burn2Open ? 'text-green-400' : 'text-red-400'}>
-              {status.burn2Open ? `● OPEN — ${5 - status.burn2Count}/5 left` : '● FULL'}
+              {status.burn2Open
+                ? `● OPEN — ${5 - status.burn2Count}/5 left`
+                : status.burn2Count >= 5 ? '● FULL' : '● CLOSED'}
             </span>
           </div>
         </div>
@@ -246,11 +303,31 @@ export function AdminPanel() {
         </button>
       </div>
 
+      {/* Burn 2 toggle */}
+      <div className="flex gap-3">
+        <button
+          className="flex-1 py-2 border border-green-700/50 text-green-400 text-xs tracking-widest
+                     hover:bg-green-900/20 transition disabled:opacity-40"
+          disabled={!!loading || status?.burn2Open === true}
+          onClick={() => toggleBurn2('open')}
+        >
+          {loading === 'burn2-open' ? '…' : 'OPEN BURN 2'}
+        </button>
+        <button
+          className="flex-1 py-2 border border-red-700/50 text-red-400 text-xs tracking-widest
+                     hover:bg-red-900/20 transition disabled:opacity-40"
+          disabled={!!loading || status?.burn2Open === false}
+          onClick={() => toggleBurn2('close')}
+        >
+          {loading === 'burn2-close' ? '…' : 'CLOSE BURN 2'}
+        </button>
+      </div>
+
       {/* Export */}
       <button
         className="w-full py-3 border border-white/20 text-white/70 text-xs tracking-widest
                    hover:border-white/40 hover:text-white transition"
-        onClick={downloadCSV}
+        onClick={exportCSV}
       >
         ↓ EXPORT BURNS CSV
       </button>
@@ -303,6 +380,13 @@ export function AdminPanel() {
       </div>
 
       {msg && <p className="text-xs text-center text-white/50">{msg}</p>}
+
+      <button
+        className="text-[10px] text-white/20 hover:text-white/50 underline tracking-widest self-center"
+        onClick={() => { clearAdminKey(); setAdminKey(null); setKeyInput(''); }}
+      >
+        change admin key
+      </button>
     </div>
   );
 }

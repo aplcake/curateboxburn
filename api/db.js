@@ -29,6 +29,7 @@ db.exec(`
   );
 
   INSERT OR IGNORE INTO config (key, value) VALUES ('burn1_open',      'true');
+  INSERT OR IGNORE INTO config (key, value) VALUES ('burn2_open',      'false');
   INSERT OR IGNORE INTO config (key, value) VALUES ('burn2_count',     '0');
   INSERT OR IGNORE INTO config (key, value) VALUES ('event_live',      'true');
   INSERT OR IGNORE INTO config (key, value) VALUES ('burn1_timer_end', '');
@@ -89,7 +90,7 @@ const getBurnStatus = () => {
     burn1Open:  getConfig('burn1_open') === 'true',
     timerEnd:   timerEnd || null,
     burn2Count,
-    burn2Open:  burn2Count < 5,
+    burn2Open:  getConfig('burn2_open') === 'true' && burn2Count < 5,
     totalBurn1: db.prepare("SELECT COUNT(*) AS c FROM burns WHERE tier = 1").get().c,
     totalBurn2: db.prepare("SELECT COUNT(*) AS c FROM burns WHERE tier = 2").get().c,
   };
@@ -105,6 +106,7 @@ const recordBurn = (wallet, tier, txHash, amount) => {
 };
 
 const setBurn1Open = (open) => setConfig.run(open ? 'true' : 'false', 'burn1_open');
+const setBurn2Open = (open) => setConfig.run(open ? 'true' : 'false', 'burn2_open');
 const setEventLive = (live) => setConfig.run(live ? 'true' : 'false', 'event_live');
 
 // Start a 24h timer — opens burn1 immediately and sets the auto-close time
@@ -143,7 +145,7 @@ const getSlideshowItems = () =>
   db.prepare('SELECT id, opensea_url AS openseaUrl, name, image_url AS imageUrl FROM slideshow_items ORDER BY sort_order ASC').all();
 
 module.exports = {
-  db, getBurnStatus, recordBurn, setBurn1Open, setEventLive,
+  db, getBurnStatus, recordBurn, setBurn1Open, setBurn2Open, setEventLive,
   startBurn1Timer, stopBurn1Timer, hasWalletBurned1,
   getAllBurns, hasTx,
   replaceSlideshowItems, getSlideshowItems,

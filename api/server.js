@@ -4,7 +4,7 @@ const { createPublicClient, createWalletClient, http, parseAbiItem } = require('
 const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
 const {
-  db, getBurnStatus, recordBurn, setBurn1Open, setEventLive,
+  db, getBurnStatus, recordBurn, setBurn1Open, setBurn2Open, setEventLive,
   startBurn1Timer, stopBurn1Timer, hasWalletBurned1,
   getAllBurns, hasTx, replaceSlideshowItems, getSlideshowItems,
 } = require('./db');
@@ -267,7 +267,7 @@ app.post('/burns', async (req, res) => {
   if (tier === 1 && !status.burn1Open)
     return res.status(400).json({ error: 'Burn 1 is currently closed' });
   if (tier === 2 && !status.burn2Open)
-    return res.status(400).json({ error: `Burn 2 is full (${MAX_BURN2}/${MAX_BURN2})` });
+    return res.status(400).json({ error: 'Burn 2 is closed' });
   if (hasTx(txHash))
     return res.status(400).json({ error: 'TX already recorded' });
 
@@ -304,6 +304,15 @@ app.post('/admin/burn1/close', requireAdmin, (_req, res) => {
 app.post('/admin/burn1/open', requireAdmin, (_req, res) => {
   setBurn1Open(true);
   res.json({ burn1Open: true });
+});
+
+app.post('/admin/burn2/close', requireAdmin, (_req, res) => {
+  setBurn2Open(false);
+  res.json({ burn2Open: false });
+});
+app.post('/admin/burn2/open', requireAdmin, (_req, res) => {
+  setBurn2Open(true);
+  res.json({ burn2Open: true });
 });
 
 // Start the 24h burn ×1 open edition timer
