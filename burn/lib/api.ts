@@ -85,17 +85,17 @@ export const startBurn1Timer = async (): Promise<{ timerEnd: string }> => {
   return data;
 };
 
-export const togglePool = async (action: 'start' | 'stop') => {
-  const r = await fetch(`/api/admin/pool/${action}`, { method: 'POST' });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || 'Failed');
-  return data;
-};
-
 export const stopBurn1Timer = async () => {
   const r = await fetch('/api/admin/timer/stop', { method: 'POST', headers: adminHeaders() });
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'Failed to stop timer');
+  return data;
+};
+
+export const togglePool = async (action: 'start' | 'stop') => {
+  const r = await fetch(`/api/admin/pool/${action}`, { method: 'POST', headers: adminHeaders() });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Failed');
   return data;
 };
 
