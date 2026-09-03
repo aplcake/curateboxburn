@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { --font-mono: 'Courier New', monospace; }
+
+body {
+  background: #000;
+  color: #e5e5e5;
+  font-family: var(--font-mono), monospace;
+  overflow: hidden;
+}
+
+/* Burn glow pulse */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(255,68,0,0.4); }
+  50%       { box-shadow: 0 0 40px rgba(255,68,0,0.7), 0 0 60px rgba(255,68,0,0.3); }
+}
+
+.btn-burn {
+  @apply relative overflow-hidden bg-burn text-white font-bold py-4 px-8 
+         tracking-widest uppercase transition-all duration-200
+         disabled:opacity-40 disabled:cursor-not-allowed;
+  animation: glow-pulse 2.5s ease-in-out infinite;
+}
+.btn-burn:hover:not(:disabled) {
+  @apply bg-burn-glow;
+  animation: none;
+  box-shadow: 0 0 40px rgba(255,68,0,0.8), 0 0 80px rgba(255,68,0,0.4);
+}
+
+.btn-burn-2 {
+  @apply btn-burn bg-transparent border-2 border-burn;
+}
+
+@keyframes flicker {
+  0%,100% { opacity:1 } 50% { opacity:0.85 } 75% { opacity:0.92 }
+}
+.flicker { animation: flicker 4s ease-in-out infinite; }
+
+.stat-box {
+  @apply border border-white/10 bg-white/[0.03] p-4 rounded;
+}

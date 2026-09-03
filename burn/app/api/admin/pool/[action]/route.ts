@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
-const API = process.env.API_URL!;
+const API       = process.env.API_URL!;
 const ADMIN_KEY = process.env.ADMIN_API_KEY!;
 export async function POST(_req: NextRequest, { params }: { params: { action: string } }) {
   const { action } = params;

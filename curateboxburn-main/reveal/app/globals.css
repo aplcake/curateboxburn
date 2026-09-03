@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: #0a0a0a;
+  color: #e5e5e5;
+  font-family: 'Courier New', monospace;
+}
+
+/* Roulette */
+.roulette-track {
+  display: flex;
+  will-change: transform;
+}
+
+.roulette-card {
+  flex-shrink: 0;
+  width: 160px;
+  height: 200px;
+  border: 2px solid rgba(255,255,255,0.08);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.roulette-card.winner {
+  border-color: #f5c842;
+  box-shadow: 0 0 30px rgba(245,200,66,0.5), inset 0 0 30px rgba(245,200,66,0.1);
+  animation: winnerPop 0.5s ease;
+}
+
+@keyframes winnerPop {
+  0%,100% { transform: scale(1); }
+  50%      { transform: scale(1.04); }
+}
+
+/* Center arrow marker */
+.roulette-marker {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  background: #f5c842;
+  z-index: 10;
+  pointer-events: none;
+}
+.roulette-marker::before,
+.roulette-marker::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+}
+.roulette-marker::before {
+  top: 0;
+  border-top: 10px solid #f5c842;
+}
+.roulette-marker::after {
+  bottom: 0;
+  border-bottom: 10px solid #f5c842;
+}
+
+/* Fade edges */
+.roulette-fade-left {
+  background: linear-gradient(to right, #0a0a0a 0%, transparent 100%);
+}
+.roulette-fade-right {
+  background: linear-gradient(to left, #0a0a0a 0%, transparent 100%);
+}
+
+/* Panel */
+.panel {
+  @apply border border-white/10 bg-white/[0.03] rounded p-4;
+}
+
+.tag-tier1 { @apply bg-orange-900/30 text-orange-300 text-xs px-2 py-0.5 rounded; }
+.tag-tier2 { @apply bg-yellow-900/30 text-yellow-300 text-xs px-2 py-0.5 rounded; }
+
+@keyframes fadeIn {
+  from { opacity:0; transform:translateY(8px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.fade-in { animation: fadeIn 0.3s ease forwards; }
