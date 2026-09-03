@@ -37,18 +37,13 @@ const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK_URL;
 
 // ─── Manifold ────────────────────────────────────────────────────────────────
 //
-// TIER 2 (burn ×2) — existing contract, token #1
-const MANIFOLD_T2_CONTRACT = process.env.MANIFOLD_CONTRACT_ADDRESS || null;
-const MANIFOLD_T2_TOKEN_ID = BigInt(process.env.MANIFOLD_TOKEN_ID || '1');
+// BURN ×2 (gold seal, 5 slots)
+const MANIFOLD_T2_CONTRACT = process.env.BURN2_MANIFOLD_CONTRACT || null;
+const MANIFOLD_T2_TOKEN_ID = BigInt(process.env.BURN2_MANIFOLD_TOKEN_ID || '0');
 
-// TIER 1 (burn ×1) — open-edition contract
-// ┌──────────────────────────────────────────────────────────────────────────┐
-// │  SET THESE IN RAILWAY WHEN YOU HAVE THE TOKEN ID:                        │
-// │  MANIFOLD_TIER1_CONTRACT_ADDRESS = 0x04619852f38EBEC22bb94eF36b99351dB9900194 │
-// │  MANIFOLD_TIER1_TOKEN_ID         = ???  ← ASK YOUR FRIEND FOR THIS      │
-// └──────────────────────────────────────────────────────────────────────────┘
-const MANIFOLD_T1_CONTRACT = process.env.MANIFOLD_TIER1_CONTRACT_ADDRESS || null;
-const MANIFOLD_T1_TOKEN_ID = BigInt(process.env.MANIFOLD_TIER1_TOKEN_ID || '0'); // 0 = not set yet
+// BURN ×1 (open edition, 24h timer)
+const MANIFOLD_T1_CONTRACT = process.env.BURN1_MANIFOLD_CONTRACT || null;
+const MANIFOLD_T1_TOKEN_ID = BigInt(process.env.BURN1_MANIFOLD_TOKEN_ID || '0');
 
 const MANIFOLD_CHAIN = process.env.MANIFOLD_CONTRACT_CHAIN === 'mainnet' ? mainnet : base;
 const MINTER_KEY     = process.env.MINTER_PRIVATE_KEY || null;
@@ -97,7 +92,7 @@ const mintManifoldNFT = async (toAddress, tier) => {
   }
   if (tokenId === 0n) {
     // ⚠️  MANIFOLD_TIER1_TOKEN_ID not set in Railway yet — mint will be skipped
-    console.warn(`[manifold] ⚠️  MANIFOLD_TIER1_TOKEN_ID is not set in Railway. Set it and use remint to catch up.`);
+    console.warn(`[manifold] ⚠️  token ID not set for tier ${tier} — set BURN1/BURN2/POOL_MANIFOLD_TOKEN_ID in Railway.`);
     return;
   }
 
