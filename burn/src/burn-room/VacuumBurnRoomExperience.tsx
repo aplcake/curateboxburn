@@ -6,7 +6,6 @@ import React, { useEffect, useMemo, useRef, useState, type MutableRefObject } fr
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { OutlineMesh } from '../render/OutlineMesh'
-import { BeachEnvironment } from './BeachEnvironment'
 import type { FontData } from '@react-three/drei'
 import helvetikerBoldJson from 'three/examples/fonts/helvetiker_bold.typeface.json'
 import { getToonRampTexture } from '../shaders/toonRamp'
@@ -66,14 +65,14 @@ const DEMO_WALLET_BOX_COUNT = 5
 const BURN_CATALOG_ITEMS = [
   {
     id: 'archive-tag',
-    title: '24 HOURS OE',
+    title: 'MUSEUM TAG',
     boxCost: 1,
     accent: '#2f7168',
     icon: 'tag',
   },
   {
     id: 'gilded-seal',
-    title: 'BURN 2 FCFS',
+    title: 'GOLD SEAL',
     boxCost: 2,
     accent: '#8a5a24',
     icon: 'seal',
@@ -97,18 +96,11 @@ export type VacuumBurnRoomExperienceProps = {
   walletLabel?: string
   availableBoxCount?: number
   soldOutItemIds?: readonly BurnCatalogItemId[]
-  // Items the connected wallet already burned for — rendered with a
-  // CLAIMED EDITION stamp instead of SOLD OUT.
-  claimedItemIds?: readonly BurnCatalogItemId[]
   showDevSoldOutSwitch?: boolean
   onConnectWallet?: () => void | Promise<void>
   onBurnRequested?: (request: BurnRoomBurnRequest) => void | Promise<void>
   burn2Remaining?: number
   burn1Open?: boolean
-  // When false, the Burn 2 (FCFS) option is hidden entirely — button and
-  // plaque row both — instead of showing as sold out.
-  burn2Open?: boolean
-  timerEnd?: string | null
   // When false, the BURN button itself doesn't render — independent of any
   // DOM overlay, so the room is inert no matter what wraps it.
   eventLive?: boolean
@@ -123,11 +115,9 @@ export type VacuumBurnRoomExperienceProps = {
 }
 
 // Context so BurnCounterPlaque can read status without prop-drilling through ToonRoomShell
-const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean; burn2Open: boolean; timerEnd: string | null }>({
+const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean }>({
   burn2Remaining: 5,
   burn1Open: true,
-  burn2Open: true,
-  timerEnd: null,
 })
 const DEFAULT_BURN_CATALOG_ITEM_ID: BurnCatalogItemId = BURN_CATALOG_ITEMS[0].id
 function getBurnCatalogItem(itemId: BurnCatalogItemId) {
@@ -645,21 +635,31 @@ function pointerHitAreaMaterial() {
   return <meshBasicMaterial color="#ffffff" transparent opacity={0} depthWrite={false} side={THREE.DoubleSide} />
 }
 
-// Cursor materials match the museum homepage's arrow cursor: white toon face,
-// ink outline, always drawn on top (depthTest off) so it never clips scenery.
 function cursorInkMaterial({ opacity = 1 }: { opacity?: number } = {}) {
   return <meshBasicMaterial color="#17121f" transparent={opacity < 1} opacity={opacity} depthWrite={false} depthTest={false} toneMapped={false} />
 }
 
-function cursorFaceMaterial() {
-  return <meshToonMaterial color="#ffffff" depthWrite={false} depthTest={false} />
+function cursorGloveMaterial() {
+  return <meshToonMaterial color="#fff0c8" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
 }
 
-function cursorShadeMaterial() {
-  return <meshToonMaterial color="#d7d1c5" depthWrite={false} depthTest={false} />
+function cursorGloveShadeMaterial() {
+  return <meshToonMaterial color="#e5ba72" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
 }
 
-function cursorGlowMaterial({ color = '#ffffff', opacity = 0.22 }: { color?: string; opacity?: number } = {}) {
+function cursorCuffMaterial() {
+  return <meshToonMaterial color="#2f7168" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
+}
+
+function cursorCuffInsetMaterial() {
+  return <meshToonMaterial color="#9fd7cc" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
+}
+
+function cursorBrassMaterial() {
+  return <meshToonMaterial color="#d6b55b" gradientMap={getToonRampTexture()} transparent opacity={1} depthWrite={false} depthTest={false} />
+}
+
+function cursorGlowMaterial({ color = '#fff1a2', opacity = 0.22 }: { color?: string; opacity?: number } = {}) {
   return <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} depthTest={false} toneMapped={false} side={THREE.DoubleSide} />
 }
 
@@ -2055,9 +2055,7 @@ function InspectionCamera() {
 
   useEffect(() => {
     const narrow = size.width / Math.max(1, size.height) < 0.72
-    // Pulled back slightly from the pre-beach framing so a strip of sand,
-    // shore, and props reads around the hut by default.
-    camera.position.set(narrow ? 1.14 : 1.55, narrow ? 6.6 : 6.35, narrow ? 16.4 : 14.3)
+    camera.position.set(narrow ? 1.14 : 1.45, narrow ? 6.4 : 6.1, narrow ? 15.0 : 12.5)
     camera.lookAt(...BOX_TARGET)
     camera.updateProjectionMatrix()
   }, [camera, size.height, size.width])
@@ -3085,37 +3083,10 @@ function DisplayText3D({
 }
 
 
-function useBurn1Countdown(timerEnd: string | null) {
-  const [display, setDisplay] = useState('')
-  useEffect(() => {
-    if (!timerEnd) { setDisplay(''); return; }
-    const tick = () => {
-      const ms = new Date(timerEnd).getTime() - Date.now()
-      if (ms <= 0) { setDisplay('CLOSED'); return; }
-      const h = Math.floor(ms / 3_600_000)
-      const m = Math.floor((ms % 3_600_000) / 60_000)
-      const s = Math.floor((ms % 60_000) / 1_000)
-      setDisplay(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`)
-    }
-    tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
-  }, [timerEnd])
-  return display
-}
-
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
-  const { burn2Remaining, burn1Open, burn2Open, timerEnd } = React.useContext(BurnStatusContext)
-  const countdown = useBurn1Countdown(timerEnd)
-  // Timer live → the plaque becomes a framed countdown painting for the
-  // 24h open edition. Otherwise → burn status board (Burn 2 row only shows
-  // while that phase is live).
-  const timerLive = !!timerEnd && burn1Open && countdown !== '' && countdown !== 'CLOSED'
-  const sealsLeft = Math.max(0, Math.min(5, burn2Remaining))
-  // The board only shows the currently active phase. When nothing is live it
-  // falls back to a single 24 HOURS OE row reading CLOSED.
-  const show24hRow = burn1Open || !burn2Open
-  const bothRows = show24hRow && burn2Open
+  const { burn2Remaining, burn1Open } = React.useContext(BurnStatusContext)
+  const goldSealCount = `${burn2Remaining} / 5`
+  const tagStatus = burn1Open ? 'OPEN' : 'CLOSED'
 
   return (
     <group position={[ROOM_CENTER_X + 0.18, 1.9, wallFaceZ + 0.092]} renderOrder={20}>
@@ -3169,94 +3140,33 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
           </mesh>
         </group>
       ))}
-      {timerLive ? (
-        <group>
-          {/* Painted sun, top-left of the canvas */}
-          <group position={[-0.86, 0.18, 0.1]}>
-            <mesh scale={[0.1, 0.1, 1]}>
-              <circleGeometry args={[1, 26]} />
-              {galleryGoldMaterial()}
-            </mesh>
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((index) => (
-              <mesh
-                key={`plaque-sun-ray-${index}`}
-                position={[Math.cos(index * Math.PI / 4) * 0.155, Math.sin(index * Math.PI / 4) * 0.155, 0]}
-                rotation={[0, 0, index * Math.PI / 4]}
-                scale={[0.052, 0.016, 0.012]}
-              >
-                <boxGeometry args={[1, 1, 1]} />
-                {galleryGoldMaterial()}
-              </mesh>
-            ))}
-          </group>
-          {/* Painted waves, bottom-right */}
-          {[0, 1, 2].map((index) => (
-            <mesh
-              key={`plaque-wave-${index}`}
-              position={[0.56 + index * 0.19, -0.315 + (index % 2) * 0.015, 0.1]}
-              scale={[0.105, 0.055, 1]}
-            >
-              <ringGeometry args={[0.58, 1, 18, 1, 0, Math.PI]} />
-              {galleryTealMaterial()}
-            </mesh>
-          ))}
-          <DisplayText3D text="24 HOURS OE" position={[0, 0.26, 0.125]} size={0.085} color="#8a5a24" align="center" depth={0.028} />
-          <DisplayText3D
-            text={countdown}
-            position={[0, -0.055, 0.132]}
-            size={0.2}
-            color="#2f7168"
-            align="center"
-            depth={0.048}
-          />
-          <DisplayText3D text="24 HOUR BURN - 1 PER WALLET" position={[0, -0.315, 0.125]} size={0.052} color="#5c3d2a" align="center" depth={0.02} />
-        </group>
-      ) : (
-        <group>
-          <mesh position={[0, 0.18, 0.116]} scale={[1.78, 0.018, 0.018]}>
-            <boxGeometry args={[1, 1, 1]} />
-            {galleryGoldMaterial()}
-          </mesh>
-          {bothRows ? (
-            <mesh position={[0, -0.13, 0.116]} scale={[1.78, 0.018, 0.018]}>
-              <boxGeometry args={[1, 1, 1]} />
-              {galleryGoldMaterial()}
-            </mesh>
-          ) : null}
-          <DisplayText3D text="BURN STATUS" position={[0, 0.245, 0.125]} size={0.095} color="#5c3d2a" align="center" depth={0.028} />
-          {burn2Open ? (
-            <group>
-              <DisplayText3D text="BURN 2 FCFS" position={[-0.92, bothRows ? 0.015 : -0.06, 0.13]} size={0.082} color="#8a5a24" depth={0.032} />
-              {/* Five FCFS slots — filled gold = still available, hollow = taken */}
-              {[0, 1, 2, 3, 4].map((index) => (
-                <group key={`plaque-seal-${index}`} position={[0.28 + index * 0.165, bothRows ? 0.045 : -0.03, 0.128]}>
-                  <mesh scale={[0.062, 0.062, 1]}>
-                    <ringGeometry args={[0.7, 1, 22]} />
-                    {mcmPanelInkMaterial()}
-                  </mesh>
-                  <mesh scale={[0.048, 0.048, 1]}>
-                    <circleGeometry args={[1, 22]} />
-                    {index < sealsLeft ? galleryGoldMaterial() : galleryCreamMaterial()}
-                  </mesh>
-                </group>
-              ))}
-            </group>
-          ) : null}
-          {show24hRow ? (
-            <group>
-              <DisplayText3D text="24 HOURS OE" position={[-0.92, bothRows ? -0.27 : -0.06, 0.13]} size={0.078} color="#2f7168" depth={0.032} />
-              <DisplayText3D
-                text={burn1Open ? 'OPEN' : 'CLOSED'}
-                position={[0.92, bothRows ? -0.282 : -0.072, 0.132]}
-                size={burn1Open ? 0.122 : 0.096}
-                color={burn1Open ? '#2f7168' : '#c43426'}
-                align="right"
-                depth={0.04}
-              />
-            </group>
-          ) : null}
-        </group>
-      )}
+      <mesh position={[0, 0.18, 0.116]} scale={[1.78, 0.018, 0.018]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      <mesh position={[0, -0.13, 0.116]} scale={[1.78, 0.018, 0.018]}>
+        <boxGeometry args={[1, 1, 1]} />
+        {galleryGoldMaterial()}
+      </mesh>
+      <DisplayText3D text="BURNS LEFT" position={[0, 0.245, 0.125]} size={0.095} color="#5c3d2a" align="center" depth={0.028} />
+      <DisplayText3D text="GOLD SEAL" position={[-0.92, 0.015, 0.13]} size={0.095} color="#8a5a24" depth={0.032} />
+      <DisplayText3D
+        text={goldSealCount}
+        position={[0.92, 0.002, 0.132]}
+        size={0.12}
+        color={burn2Remaining > 0 ? '#c49a12' : '#c43426'}
+        align="right"
+        depth={0.04}
+      />
+      <DisplayText3D text="MUSEUM TAG" position={[-0.92, -0.27, 0.13]} size={0.088} color="#2f7168" depth={0.032} />
+      <DisplayText3D
+        text={tagStatus}
+        position={[0.92, -0.282, 0.132]}
+        size={burn1Open ? 0.122 : 0.096}
+        color={burn1Open ? '#2f7168' : '#c43426'}
+        align="right"
+        depth={0.04}
+      />
     </group>
   )
 }
@@ -6231,6 +6141,46 @@ function GroundTrapdoor({
   )
 }
 
+function CursorJuiceSparkle({
+  position,
+  phase,
+  scale = 1,
+  color = '#fff1a2',
+}: {
+  position: [number, number, number]
+  phase: number
+  scale?: number
+  color?: string
+}) {
+  const root = useRef<THREE.Group>(null)
+
+  useFrame(({ clock }) => {
+    const rootNode = root.current
+    if (!rootNode) return
+
+    const t = clock.elapsedTime + phase
+    const pulse = (Math.sin(t * 5.4) + 1) * 0.5
+    rootNode.position.set(position[0] + Math.sin(t * 2.8) * 0.012, position[1] + Math.cos(t * 3.2) * 0.014, position[2])
+    rootNode.rotation.set(0, 0, t * 1.45)
+    rootNode.scale.setScalar(scale * (0.56 + pulse * 0.5))
+    rootNode.visible = pulse > 0.12
+  })
+
+  return (
+    <group ref={root} position={position} renderOrder={103}>
+      <RoundedBox args={[0.018, 0.112, 0.018]} radius={0.006} smoothness={3}>
+        {cursorGlowMaterial({ color, opacity: 0.86 })}
+      </RoundedBox>
+      <RoundedBox args={[0.112, 0.018, 0.018]} radius={0.006} smoothness={3}>
+        {cursorGlowMaterial({ color, opacity: 0.86 })}
+      </RoundedBox>
+      <RoundedBox args={[0.052, 0.052, 0.016]} radius={0.012} smoothness={3} rotation={[0, 0, Math.PI / 4]}>
+        {cursorBrassMaterial()}
+      </RoundedBox>
+    </group>
+  )
+}
+
 function MuseumToonCursor() {
   const root = useRef<THREE.Group>(null)
   const body = useRef<THREE.Group>(null)
@@ -6251,37 +6201,33 @@ function MuseumToonCursor() {
   const clickPulse = useRef(0)
   const isPressed = useRef(false)
   const hasPointer = useRef(false)
-  // Touch devices have no persistent pointer — showing the arrow there leaves
-  // it stranded wherever the last tap landed, so it's mouse/trackpad only.
-  const finePointer = useMemo(
-    () => typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches,
-    [],
-  )
   const cursorGeometry = useMemo(() => {
     const shape = new THREE.Shape()
-    // Local origin is the click hotspot: the visible arrow tip.
-    shape.moveTo(0, 0)
-    shape.lineTo(0.018, -0.292)
-    shape.lineTo(0.096, -0.218)
-    shape.lineTo(0.152, -0.354)
-    shape.lineTo(0.226, -0.324)
-    shape.lineTo(0.17, -0.188)
-    shape.lineTo(0.292, -0.188)
-    shape.lineTo(0, 0)
+    shape.moveTo(0.035, 0.142)
+    shape.bezierCurveTo(0.018, 0.164, -0.022, 0.16, -0.044, 0.116)
+    shape.lineTo(-0.112, -0.016)
+    shape.bezierCurveTo(-0.076, -0.014, -0.038, -0.01, -0.006, -0.002)
+    shape.lineTo(-0.071, -0.216)
+    shape.bezierCurveTo(-0.08, -0.248, -0.136, -0.236, -0.128, -0.202)
+    shape.lineTo(-0.191, -0.18)
+    shape.lineTo(-0.135, -0.026)
+    shape.lineTo(-0.272, -0.054)
+    shape.bezierCurveTo(-0.326, -0.064, -0.34, -0.01, -0.286, 0.011)
+    shape.lineTo(-0.094, 0.094)
+    shape.bezierCurveTo(-0.048, 0.116, -0.006, 0.132, 0.035, 0.142)
     const geometry = new THREE.ExtrudeGeometry(shape, {
-      depth: 0.068,
+      depth: 0.052,
       bevelEnabled: true,
-      bevelThickness: 0.015,
-      bevelSize: 0.011,
-      bevelSegments: 4,
+      bevelThickness: 0.014,
+      bevelSize: 0.012,
+      bevelSegments: 3,
     })
-    geometry.translate(0, 0, -0.034)
+    geometry.translate(0, 0, -0.026)
     geometry.computeVertexNormals()
     return geometry
   }, [])
 
   useEffect(() => {
-    if (!finePointer) return undefined
     const canvas = gl.domElement
     const showCursor = () => {
       hasPointer.current = true
@@ -6316,7 +6262,7 @@ function MuseumToonCursor() {
       window.removeEventListener('pointerup', releaseCursor)
       canvas.style.cursor = ''
     }
-  }, [gl, finePointer])
+  }, [gl])
 
   useEffect(() => {
     const rootNode = root.current
@@ -6337,6 +6283,8 @@ function MuseumToonCursor() {
     const rootNode = root.current
     const bodyNode = body.current
     if (!rootNode || !bodyNode) return
+
+    gl.domElement.style.cursor = 'none'
 
     const follow = 1 - Math.exp(-22 * dt)
     previousPointer.current.copy(smoothedPointer.current)
@@ -6368,89 +6316,96 @@ function MuseumToonCursor() {
     rootNode.visible = pointerVisible.current > 0.025
     rootNode.position.copy(targetPosition)
     rootNode.quaternion.copy(camera.quaternion)
-    rootNode.scale.setScalar(size.width < 620 ? 0.3 : 0.37)
+    rootNode.scale.setScalar(size.width < 620 ? 0.56 : 0.68)
 
     const t = clock.elapsedTime
     const clickBounce = clickPulse.current > 0 ? Math.sin((1 - clickPulse.current) * Math.PI) * clickPulse.current : 0
     const hover = hoverAmount.current
     const press = pressAmount.current
-    const movementSquash = Math.min(0.1, pointerSpeed * 0.02)
-    const idleWiggle = Math.sin(t * 5.6) * 0.007 + Math.sin(t * 9.3) * 0.004
-
-    bodyNode.position.set(0, 0, 0)
+    const movementSquash = Math.min(0.14, pointerSpeed * 0.028)
+    const idleWiggle = Math.sin(t * 5.6) * 0.012 + Math.sin(t * 9.3) * 0.006
+    bodyNode.position.set(-0.018 + Math.sin(t * 2.4) * 0.006, -0.022 + Math.cos(t * 2.1) * 0.006, 0)
     bodyNode.rotation.set(
       0,
       0,
-      idleWiggle + hover * -0.026 + press * 0.042 + clickBounce * -0.055 + Math.min(0.055, pointerSpeed * 0.0035),
+      -0.24 + idleWiggle + hover * -0.08 + press * 0.1 + clickBounce * -0.16 + Math.min(0.18, pointerSpeed * 0.012),
     )
     bodyNode.scale.set(
-      1 + hover * 0.045 + clickBounce * 0.09 + movementSquash * 0.34,
-      1 + hover * 0.026 - press * 0.1 - movementSquash * 0.18 + clickBounce * 0.034,
-      1 + hover * 0.06 + press * 0.08 + clickBounce * 0.08,
+      1 + hover * 0.08 + clickBounce * 0.16 + movementSquash,
+      1 + hover * 0.045 - press * 0.15 - movementSquash * 0.55 + clickBounce * 0.05,
+      1 + hover * 0.04 + press * 0.1,
     )
 
-    const trailOpacity = Math.min(0.32, 0.06 + pointerSpeed * 0.045 + hover * 0.07 + clickBounce * 0.18)
+    const trailOpacity = Math.min(0.34, 0.08 + pointerSpeed * 0.05 + hover * 0.08 + clickBounce * 0.2)
     if (trailA.current) {
-      trailA.current.position.set(0.108 + pointerSpeed * 0.007, -0.152, -0.055)
-      trailA.current.scale.set(0.07 + pointerSpeed * 0.004, 0.032 + hover * 0.008, 1)
+      trailA.current.position.set(-0.16 - pointerSpeed * 0.016, -0.1, -0.055)
+      trailA.current.scale.set(0.16 + pointerSpeed * 0.01, 0.072 + hover * 0.02, 1)
       const material = trailA.current.material as THREE.MeshBasicMaterial
       material.opacity = trailOpacity
     }
     if (trailB.current) {
-      trailB.current.position.set(0.155 + pointerSpeed * 0.008, -0.086, -0.06)
-      trailB.current.scale.set(0.05 + pointerSpeed * 0.003, 0.024 + hover * 0.006, 1)
+      trailB.current.position.set(-0.24 - pointerSpeed * 0.02, -0.04, -0.06)
+      trailB.current.scale.set(0.12 + pointerSpeed * 0.008, 0.046 + hover * 0.012, 1)
       const material = trailB.current.material as THREE.MeshBasicMaterial
       material.opacity = trailOpacity * 0.6
     }
     if (tipGlow.current) {
-      tipGlow.current.scale.setScalar(0.028 + hover * 0.018 + clickBounce * 0.056)
+      tipGlow.current.scale.setScalar(0.052 + hover * 0.028 + clickBounce * 0.07)
       const material = tipGlow.current.material as THREE.MeshBasicMaterial
-      material.opacity = 0.12 + hover * 0.16 + clickBounce * 0.32
+      material.opacity = 0.16 + hover * 0.2 + clickBounce * 0.35
     }
     if (clickRing.current) {
       const ringT = 1 - clickPulse.current
       clickRing.current.visible = clickPulse.current > 0.02
-      clickRing.current.scale.setScalar(0.075 + ringT * 0.38)
+      clickRing.current.scale.setScalar(0.12 + ringT * 0.56)
       const material = clickRing.current.material as THREE.MeshBasicMaterial
-      material.opacity = Math.max(0, clickPulse.current * 0.5)
+      material.opacity = Math.max(0, clickPulse.current * 0.42)
     }
   })
-
-  if (!finePointer) return null
 
   return (
     <group ref={root} visible={false} renderOrder={100}>
       <group ref={body}>
-        <mesh ref={trailA} position={[0.16, -0.18, -0.055]} rotation={[0, 0, -0.35]} renderOrder={96}>
+        <mesh ref={trailA} position={[-0.18, -0.1, -0.055]} rotation={[0, 0, 0.15]} renderOrder={96}>
           <circleGeometry args={[1, 28]} />
-          {cursorGlowMaterial({ color: '#fff8ee', opacity: 0.18 })}
+          {cursorGlowMaterial({ color: '#ffe58a', opacity: 0.18 })}
         </mesh>
-        <mesh ref={trailB} position={[0.24, -0.1, -0.06]} rotation={[0, 0, -0.22]} renderOrder={95}>
+        <mesh ref={trailB} position={[-0.28, -0.04, -0.06]} rotation={[0, 0, -0.18]} renderOrder={95}>
           <circleGeometry args={[1, 24]} />
-          {cursorGlowMaterial({ color: '#fff1bd', opacity: 0.08 })}
+          {cursorGlowMaterial({ color: '#9fd7cc', opacity: 0.08 })}
         </mesh>
-        <mesh geometry={cursorGeometry} scale={[1.12, 1.12, 1.1]} position={[0, 0, -0.032]} renderOrder={98}>
+        <mesh geometry={cursorGeometry} scale={[1.2, 1.2, 1.12]} position={[0, 0, -0.026]} renderOrder={98}>
           {cursorInkMaterial()}
         </mesh>
         <mesh geometry={cursorGeometry} renderOrder={101}>
-          {cursorFaceMaterial()}
+          {cursorGloveMaterial()}
         </mesh>
-        <mesh position={[0.08, -0.13, 0.08]} rotation={[0, 0, -1.02]} scale={[0.07, 0.011, 0.024]} renderOrder={104}>
-          <boxGeometry args={[1, 1, 1]} />
-          {cursorGlowMaterial({ color: '#ffffff', opacity: 0.66 })}
+        <mesh geometry={cursorGeometry} scale={[0.58, 0.44, 1]} position={[-0.15, -0.102, 0.03]} rotation={[0, 0, 0.06]} renderOrder={102}>
+          {cursorGloveShadeMaterial()}
         </mesh>
-        <mesh position={[0.157, -0.255, 0.058]} rotation={[0, 0, 0.38]} scale={[0.05, 0.01, 0.02]} renderOrder={100}>
-          <boxGeometry args={[1, 1, 1]} />
-          {cursorShadeMaterial()}
-        </mesh>
-        <mesh ref={tipGlow} position={[0, 0, 0.072]} renderOrder={105}>
+        <mesh ref={tipGlow} position={[0.018, 0.127, 0.054]} renderOrder={105}>
           <circleGeometry args={[1, 28]} />
-          {cursorGlowMaterial({ color: '#ffffff', opacity: 0.22 })}
+          {cursorGlowMaterial({ color: '#fff7b8', opacity: 0.22 })}
         </mesh>
-        <mesh ref={clickRing} position={[0, 0, 0.06]} renderOrder={104} visible={false}>
+        <mesh ref={clickRing} position={[0.018, 0.127, 0.036]} renderOrder={104} visible={false}>
           <ringGeometry args={[0.68, 1, 42]} />
-          {cursorGlowMaterial({ color: '#ffffff', opacity: 0.28 })}
+          {cursorGlowMaterial({ color: '#fff1a2', opacity: 0.28 })}
         </mesh>
+        <RoundedBox args={[0.21, 0.13, 0.08]} radius={0.04} smoothness={5} position={[-0.203, -0.23, 0.006]} rotation={[0, 0, -0.34]} renderOrder={101}>
+          {cursorInkMaterial()}
+        </RoundedBox>
+        <RoundedBox args={[0.18, 0.1, 0.075]} radius={0.034} smoothness={5} position={[-0.204, -0.228, 0.045]} rotation={[0, 0, -0.34]} renderOrder={102}>
+          {cursorCuffMaterial()}
+        </RoundedBox>
+        <RoundedBox args={[0.12, 0.04, 0.082]} radius={0.018} smoothness={4} position={[-0.186, -0.197, 0.087]} rotation={[0, 0, -0.34]} renderOrder={103}>
+          {cursorCuffInsetMaterial()}
+        </RoundedBox>
+        <RoundedBox args={[0.235, 0.035, 0.09]} radius={0.015} smoothness={4} position={[-0.215, -0.157, 0.088]} rotation={[0, 0, -0.34]} renderOrder={104}>
+          {cursorBrassMaterial()}
+        </RoundedBox>
+        <CursorJuiceSparkle position={[-0.29, 0.12, 0.07]} phase={0.2} scale={0.72} color="#fff1a2" />
+        <CursorJuiceSparkle position={[-0.38, -0.13, 0.072]} phase={1.5} scale={0.48} color="#9fd7cc" />
+        <CursorJuiceSparkle position={[0.04, -0.16, 0.074]} phase={2.6} scale={0.54} color="#ffd47a" />
       </group>
     </group>
   )
@@ -6477,6 +6432,17 @@ function MuseumWalletConnectButton({
   const cameraRight = useMemo(() => new THREE.Vector3(), [])
   const cameraUp = useMemo(() => new THREE.Vector3(), [])
   const targetPosition = useMemo(() => new THREE.Vector3(), [])
+
+  useEffect(() => {
+    if (!hovered) return undefined
+    const canvas = gl.domElement
+    const previousCursor = canvas.style.cursor
+    canvas.style.cursor = 'pointer'
+
+    return () => {
+      canvas.style.cursor = previousCursor
+    }
+  }, [gl, hovered])
 
   useFrame(({ clock }, dt) => {
     const rootNode = root.current
@@ -6698,6 +6664,17 @@ function MuseumBurnLaunchButton({
   const cameraUp = useMemo(() => new THREE.Vector3(), [])
   const targetPosition = useMemo(() => new THREE.Vector3(), [])
 
+  useEffect(() => {
+    if (!hovered) return undefined
+    const canvas = gl.domElement
+    const previousCursor = canvas.style.cursor
+    canvas.style.cursor = 'pointer'
+
+    return () => {
+      canvas.style.cursor = previousCursor
+    }
+  }, [gl, hovered])
+
   useFrame(({ clock }, dt) => {
     const rootNode = root.current
     const plaqueNode = plaque.current
@@ -6885,18 +6862,14 @@ function BurnLaunchButtonLabel({ hovered }: { hovered: boolean }) {
 }
 
 function MuseumBurnCatalogSelector({
-  items,
   selectedItemId,
   availableBoxCount,
   soldOutItemIds,
-  claimedItemIds,
   onSelect,
 }: {
-  items: readonly BurnCatalogItem[]
   selectedItemId: BurnCatalogItemId
   availableBoxCount: number
   soldOutItemIds: readonly BurnCatalogItemId[]
-  claimedItemIds: readonly BurnCatalogItemId[]
   onSelect: (item: BurnCatalogItem) => void
 }) {
   const root = useRef<THREE.Group>(null)
@@ -6909,6 +6882,17 @@ function MuseumBurnCatalogSelector({
   const cameraRight = useMemo(() => new THREE.Vector3(), [])
   const cameraUp = useMemo(() => new THREE.Vector3(), [])
   const targetPosition = useMemo(() => new THREE.Vector3(), [])
+
+  useEffect(() => {
+    if (hoveredOption === null) return undefined
+    const canvas = gl.domElement
+    const previousCursor = canvas.style.cursor
+    canvas.style.cursor = 'pointer'
+
+    return () => {
+      canvas.style.cursor = previousCursor
+    }
+  }, [gl, hoveredOption])
 
   useFrame(({ clock }, dt) => {
     const rootNode = root.current
@@ -6966,7 +6950,7 @@ function MuseumBurnCatalogSelector({
         <RoundedBox args={[3.32, 1.24, 0.16]} radius={0.14} smoothness={6} position={[0, 0, 0]}>
           {walletPlaqueWalnutMaterial()}
         </RoundedBox>
-        {items.map((item, index) => (
+        {BURN_CATALOG_ITEMS.map((item, index) => (
           <MuseumBurnCatalogOption
             key={item.id}
             item={item}
@@ -6975,8 +6959,7 @@ function MuseumBurnCatalogSelector({
             pressed={pressedOption === item.id}
             availableBoxCount={availableBoxCount}
             soldOut={soldOutItemIds.includes(item.id)}
-            claimed={claimedItemIds.includes(item.id)}
-            x={items.length === 1 ? 0 : index === 0 ? -0.84 : 0.84}
+            x={index === 0 ? -0.84 : 0.84}
             y={0}
             onSelect={() => {
               clickPulse.current = 1
@@ -7045,7 +7028,6 @@ function MuseumBurnCatalogOption({
   pressed,
   availableBoxCount,
   soldOut,
-  claimed,
   x,
   y,
   onSelect,
@@ -7060,7 +7042,6 @@ function MuseumBurnCatalogOption({
   pressed: boolean
   availableBoxCount: number
   soldOut: boolean
-  claimed: boolean
   x: number
   y: number
   onSelect: () => void
@@ -7070,7 +7051,7 @@ function MuseumBurnCatalogOption({
   onHoverEnd: () => void
 }) {
   const missingBoxCount = Math.max(0, item.boxCost - availableBoxCount)
-  const unavailable = soldOut || claimed || missingBoxCount > 0
+  const unavailable = soldOut || missingBoxCount > 0
   const lift = selected ? 0.014 : hovered ? 0.016 : 0
   const pressDepth = pressed ? -0.035 : 0
   const scale = selected ? 1.026 : hovered ? 1.014 : 1
@@ -7117,9 +7098,7 @@ function MuseumBurnCatalogOption({
       </mesh>
       <MuseumCatalogItemLabel item={item} selected={selected} />
       <MuseumCatalogBoxCostGlyph item={item} selected={selected} hovered={hovered} availableBoxCount={availableBoxCount} />
-      {claimed ? (
-        <MuseumSoldOutStamp compact position={[0, 0.08, 0.245]} rotationZ={-0.18} scale={0.78} label="CLAIMED EDITION" />
-      ) : soldOut ? (
+      {soldOut ? (
         <MuseumSoldOutStamp compact position={[0, 0.08, 0.245]} rotationZ={-0.18} scale={0.78} />
       ) : unavailable ? (
         <MuseumCatalogShortageBadge missingBoxCount={missingBoxCount} />
@@ -7181,13 +7160,11 @@ function MuseumSoldOutStamp({
   position = [0, 0, 0],
   rotationZ = -0.16,
   scale = 1,
-  label = 'SOLD OUT',
 }: {
   compact?: boolean
   position?: [number, number, number]
   rotationZ?: number
   scale?: number
-  label?: string
 }) {
   const stampWidth = compact ? 1.06 : 1.62
   const stampHeight = compact ? 0.34 : 0.48
@@ -7210,7 +7187,7 @@ function MuseumSoldOutStamp({
       <RoundedBox args={[stampWidth - 0.3, compact ? 0.045 : 0.06, 0.035]} radius={0.02} smoothness={3} position={[0, compact ? -0.115 : -0.165, 0.092]} renderOrder={47}>
         {soldOutStampInsetMaterial()}
       </RoundedBox>
-      <MuseumSoldOutStampLabel compact={compact} width={stampWidth - 0.2} text={label} />
+      <MuseumSoldOutStampLabel compact={compact} width={stampWidth - 0.2} />
     </group>
   )
 }
@@ -7218,11 +7195,9 @@ function MuseumSoldOutStamp({
 function MuseumSoldOutStampLabel({
   compact,
   width,
-  text,
 }: {
   compact: boolean
   width: number
-  text: string
 }) {
   const texture = useMemo(() => {
     if (typeof document === 'undefined') return null
@@ -7237,25 +7212,18 @@ function MuseumSoldOutStampLabel({
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     context.lineJoin = 'round'
-    let fontSize = compact ? 134 : 154
-    context.font = `900 ${fontSize}px Arial Black, Impact, sans-serif`
-    const maxTextWidth = canvas.width * 0.92
-    const measuredTextWidth = context.measureText(text).width
-    if (measuredTextWidth > maxTextWidth) {
-      fontSize *= maxTextWidth / measuredTextWidth
-      context.font = `900 ${fontSize}px Arial Black, Impact, sans-serif`
-    }
+    context.font = `900 ${compact ? 134 : 154}px Arial Black, Impact, sans-serif`
     context.strokeStyle = '#17121f'
-    context.lineWidth = (compact ? 16 : 18) * (fontSize / (compact ? 134 : 154))
-    context.strokeText(text, canvas.width / 2, canvas.height / 2 + 6)
+    context.lineWidth = compact ? 16 : 18
+    context.strokeText('SOLD OUT', canvas.width / 2, canvas.height / 2 + 6)
     context.fillStyle = '#fff0a8'
-    context.fillText(text, canvas.width / 2, canvas.height / 2 + 6)
+    context.fillText('SOLD OUT', canvas.width / 2, canvas.height / 2 + 6)
 
     const stampTexture = new THREE.CanvasTexture(canvas)
     stampTexture.colorSpace = THREE.SRGBColorSpace
     stampTexture.needsUpdate = true
     return stampTexture
-  }, [compact, text])
+  }, [compact])
 
   useEffect(() => {
     return () => {
@@ -7419,14 +7387,12 @@ function MuseumBurnDetailWindow({
   item,
   availableBoxCount,
   soldOut,
-  claimed,
   onClose,
   onBurn,
 }: {
   item: BurnCatalogItem | null
   availableBoxCount: number
   soldOut: boolean
-  claimed: boolean
   onClose: () => void
   onBurn: (item: BurnCatalogItem) => void
 }) {
@@ -7451,7 +7417,7 @@ function MuseumBurnDetailWindow({
   const cameraUp = useMemo(() => new THREE.Vector3(), [])
   const targetPosition = useMemo(() => new THREE.Vector3(), [])
   const missingBoxCount = item === null ? 0 : Math.max(0, item.boxCost - availableBoxCount)
-  const burnUnavailable = soldOut || claimed || missingBoxCount > 0
+  const burnUnavailable = soldOut || missingBoxCount > 0
   const chargeActionMarkSpecs = useMemo(() => [
     { x: -1.48, y: 0.58, outX: -0.18, outY: 0.12, width: 0.34, height: 0.036, phase: 0.1, delay: 0, rotation: -0.62, color: '#211827' },
     { x: 1.42, y: 0.48, outX: 0.19, outY: 0.09, width: 0.38, height: 0.034, phase: 1.4, delay: 0.06, rotation: 0.56, color: '#211827' },
@@ -7502,6 +7468,17 @@ function MuseumBurnDetailWindow({
       }
     }
   }, [item?.id])
+
+  useEffect(() => {
+    if (!backHovered && !burnHovered) return undefined
+    const canvas = gl.domElement
+    const previousCursor = canvas.style.cursor
+    canvas.style.cursor = burnHovered && burnUnavailable ? 'not-allowed' : 'pointer'
+
+    return () => {
+      canvas.style.cursor = previousCursor
+    }
+  }, [backHovered, burnHovered, burnUnavailable, gl])
 
   useFrame(({ clock }, dt) => {
     const rootNode = root.current
@@ -7738,7 +7715,7 @@ function MuseumBurnDetailWindow({
         </RoundedBox>
         <MuseumBurnDetailTitle item={item} />
         <MuseumBurnBoxCostDisplay item={item} availableBoxCount={availableBoxCount} />
-        {!soldOut && !claimed && missingBoxCount > 0 ? <MuseumBurnShortageNotice missingBoxCount={missingBoxCount} availableBoxCount={availableBoxCount} requiredBoxCount={item.boxCost} /> : null}
+        {!soldOut && missingBoxCount > 0 ? <MuseumBurnShortageNotice missingBoxCount={missingBoxCount} availableBoxCount={availableBoxCount} requiredBoxCount={item.boxCost} /> : null}
         <RoundedBox args={[0.035, 1.42, 0.06]} radius={0.018} smoothness={3} position={[-0.12, -0.16, 0.13]}>
           {walletPlaqueBrassMaterial()}
         </RoundedBox>
@@ -7755,11 +7732,7 @@ function MuseumBurnDetailWindow({
         <group position={[0.7, -0.16, 0]} scale={[0.9, 0.9, 1]}>
           <MuseumArtPreviewImage item={item} />
         </group>
-        {claimed ? (
-          <MuseumSoldOutStamp position={[0.7, -0.16, 0.34]} rotationZ={-0.15} scale={1.06} label="CLAIMED EDITION" />
-        ) : soldOut ? (
-          <MuseumSoldOutStamp position={[0.7, -0.16, 0.34]} rotationZ={-0.15} scale={1.06} />
-        ) : null}
+        {soldOut ? <MuseumSoldOutStamp position={[0.7, -0.16, 0.34]} rotationZ={-0.15} scale={1.06} /> : null}
         <MuseumBurnDetailButton
           label="BACK"
           width={0.98}
@@ -7784,7 +7757,7 @@ function MuseumBurnDetailWindow({
           }}
         />
         <MuseumBurnDetailButton
-          label={claimed ? 'CLAIMED EDITION' : soldOut ? 'SOLD OUT' : burnUnavailable ? `NEED ${missingBoxCount} MORE` : 'BURN'}
+          label={soldOut ? 'SOLD OUT' : burnUnavailable ? `NEED ${missingBoxCount} MORE` : 'BURN'}
           width={1.54}
           position={[0.62, -1.08, 0]}
           variant="burn"
@@ -8071,7 +8044,7 @@ function MuseumArtPreviewImage({ item }: { item: BurnCatalogItem }) {
       context.fillRect(304, 770, 416, 54)
       context.fillStyle = '#17121f'
       context.font = '900 42px Arial Black, Georgia, serif'
-      context.fillText('BURN 2 FCFS', 512, 798)
+      context.fillText('GOLD SEAL', 512, 798)
     } else {
       context.fillStyle = '#17121f'
       context.fillRect(138, 132, 748, 762)
@@ -8091,10 +8064,10 @@ function MuseumArtPreviewImage({ item }: { item: BurnCatalogItem }) {
       context.lineWidth = 20
       context.strokeRect(210, 208, 596, 612)
       context.fillStyle = '#17121f'
-      context.font = '900 66px Arial Black, Georgia, serif'
+      context.font = '900 76px Arial Black, Georgia, serif'
       context.textAlign = 'center'
       context.textBaseline = 'middle'
-      context.fillText('24 HOURS OE', 512, 710)
+      context.fillText('MUSEUM TAG', 512, 710)
       context.fillStyle = '#d6b55b'
       context.beginPath()
       context.arc(690, 594, 78, 0, Math.PI * 2)
@@ -8388,14 +8361,11 @@ export function VacuumBurnRoomExperience({
   walletConnected: controlledWalletConnected,
   availableBoxCount: controlledAvailableBoxCount,
   soldOutItemIds: controlledSoldOutItemIds,
-  claimedItemIds = [],
   showDevSoldOutSwitch = true,
   onConnectWallet,
   onBurnRequested,
   burn2Remaining = 5,
   burn1Open = true,
-  burn2Open = true,
-  timerEnd,
   eventLive = true,
   slideshowItems,
   signedTxKey,
@@ -8429,12 +8399,6 @@ export function VacuumBurnRoomExperience({
     controlledAvailableBoxCount === undefined ? 0 : DEMO_WALLET_BOX_COUNT - controlledVisibleBoxCount
   const committedHiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, externalHiddenWalletBoxCount + burnedWalletBoxCount)
   const soldOutItemIds = controlledSoldOutItemIds ?? (devSoldOut ? BURN_CATALOG_ITEMS.map((item) => item.id) : [])
-  // Only the currently active phase's option appears in the catalog. If no
-  // phase is live the tier-1 option is shown alone (it renders sold out).
-  const visibleCatalogItems = useMemo(() => {
-    const openItems = BURN_CATALOG_ITEMS.filter((item) => (item.boxCost === 2 ? burn2Open : burn1Open))
-    return openItems.length > 0 ? openItems : BURN_CATALOG_ITEMS.filter((item) => item.boxCost !== 2)
-  }, [burn1Open, burn2Open])
   const hiddenWalletBoxCount = Math.min(DEMO_WALLET_BOX_COUNT, committedHiddenWalletBoxCount + runCompletedBurnCount)
   const availableWalletBoxCount = Math.max(0, DEMO_WALLET_BOX_COUNT - hiddenWalletBoxCount)
 
@@ -8467,17 +8431,6 @@ export function VacuumBurnRoomExperience({
   // The burn ritual animation only plays once the wallet signature has gone
   // through (signedTxKey changes to a new, truthy value). Until then the
   // item is just "armed" — no visuals play yet.
-  // If a phase closes while its option is selected or open in the detail
-  // window, snap back to the first still-visible option.
-  useEffect(() => {
-    if (!visibleCatalogItems.some((item) => item.id === selectedBurnItemId)) {
-      setSelectedBurnItemId(visibleCatalogItems[0].id)
-    }
-    if (burnDetailItemId !== null && !visibleCatalogItems.some((item) => item.id === burnDetailItemId)) {
-      setBurnDetailItemId(null)
-    }
-  }, [visibleCatalogItems, selectedBurnItemId, burnDetailItemId])
-
   useEffect(() => {
     if (!signedTxKey || signedTxKey === previousSignedTxKeyRef.current) return
     previousSignedTxKeyRef.current = signedTxKey
@@ -8490,7 +8443,7 @@ export function VacuumBurnRoomExperience({
   }, [signedTxKey])
 
   return (
-    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open, burn2Open, timerEnd: timerEnd ?? null }}>
+    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open }}>
     <div
       style={{
         position: 'fixed',
@@ -8498,19 +8451,17 @@ export function VacuumBurnRoomExperience({
         width: '100vw',
         height: '100dvh',
         overflow: 'hidden',
-        background: '#a9e2ec',
+        background: '#aec9bf',
         cursor: 'none',
       }}
     >
       <Canvas
         dpr={[1.5, 2]}
-        camera={{ fov: 41, position: [1.45, 6.1, 12.5], near: 0.1, far: 160 }}
+        camera={{ fov: 41, position: [1.45, 6.1, 12.5], near: 0.1, far: 30 }}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         style={{ cursor: 'none' }}
       >
-        <color attach="background" args={['#a9e2ec']} />
-        <fog attach="fog" args={['#d9efdf', 26, 95]} />
-        <BeachEnvironment />
+        <color attach="background" args={['#aec9bf']} />
         <InspectionCamera />
         <KeyboardCameraControls controlsRef={orbitControlsRef} />
         <RitualRunController
@@ -8617,11 +8568,9 @@ export function VacuumBurnRoomExperience({
         ) : null}
         {eventLive && walletConnected && burnDetailItemId === null && burnPickerOpen ? (
           <MuseumBurnCatalogSelector
-            items={visibleCatalogItems}
             selectedItemId={selectedBurnItemId}
             availableBoxCount={availableWalletBoxCount}
             soldOutItemIds={soldOutItemIds}
-            claimedItemIds={claimedItemIds}
             onSelect={(item) => {
               setSelectedBurnItemId(item.id)
               setBurnDetailItemId(item.id)
@@ -8633,7 +8582,6 @@ export function VacuumBurnRoomExperience({
           item={burnDetailItemId === null ? null : getBurnCatalogItem(burnDetailItemId)}
           availableBoxCount={availableWalletBoxCount}
           soldOut={burnDetailItemId !== null && soldOutItemIds.includes(burnDetailItemId)}
-          claimed={burnDetailItemId !== null && claimedItemIds.includes(burnDetailItemId)}
           onClose={() => {
             setBurnDetailItemId(null)
             setBurnPickerOpen(true)
@@ -8668,11 +8616,11 @@ export function VacuumBurnRoomExperience({
           dampingFactor={0.12}
           enablePan={false}
           minDistance={2.8}
-          maxDistance={30}
+          maxDistance={22}
           minPolarAngle={0.25}
           maxPolarAngle={Math.PI * 0.5}
-          minAzimuthAngle={-0.85}
-          maxAzimuthAngle={0.85}
+          minAzimuthAngle={-0.5}
+          maxAzimuthAngle={0.5}
         />
       </Canvas>
       {showDevSoldOutSwitch ? (

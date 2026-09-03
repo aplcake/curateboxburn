@@ -2,25 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const API = process.env.API_URL!;
+const API       = process.env.API_URL!;
+const ADMIN_KEY = process.env.ADMIN_API_KEY!;
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { action: string } }
 ) {
   const { action } = params;
   if (!['open', 'close'].includes(action))
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
 
-  // Caller must supply the admin key — Railway validates it. Never attach a
-  // server-side key here: these routes are reachable by anyone.
-  const adminKey = req.headers.get('x-admin-key');
-  if (!adminKey)
-    return NextResponse.json({ error: 'Admin key required' }, { status: 401 });
-
   const r = await fetch(`${API}/admin/burn1/${action}`, {
     method:  'POST',
-    headers: { 'x-admin-key': adminKey },
+    headers: { 'x-admin-key': ADMIN_KEY },
   });
 
   const data = await r.json();

@@ -1,16 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const API = process.env.API_URL!;
+const API       = process.env.API_URL!;
+const ADMIN_KEY = process.env.ADMIN_API_KEY!;
 
-export async function GET(req: NextRequest) {
-  const adminKey = req.headers.get('x-admin-key');
-  if (!adminKey)
-    return NextResponse.json({ error: 'Admin key required' }, { status: 401 });
-
+export async function GET() {
   const r = await fetch(`${API}/admin/burns/export`, {
-    headers: { 'x-admin-key': adminKey },
+    headers: { 'x-admin-key': ADMIN_KEY },
   });
 
   if (!r.ok)

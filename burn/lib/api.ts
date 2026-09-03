@@ -12,7 +12,6 @@ function apiUrl(path: string): string {
 export type BurnStatus = {
   eventLive:  boolean;
   burn1Open:  boolean;
-  timerEnd:   string | null;  // ISO timestamp when burn1 auto-closes, null if no timer
   burn2Open:  boolean;
   burn2Count: number;
   totalBurn1: number;
@@ -44,53 +43,17 @@ export const recordBurn = async (txHash: string, tier: 1 | 2) => {
   return data;
 };
 
-// ── Admin auth ───────────────────────────────────────────────────────────────
-// The admin key (same value as Railway's ADMIN_API_KEY) is entered once in the
-// admin panel and kept in sessionStorage. Every admin call sends it; the
-// Next.js proxy routes refuse requests without it and Railway validates it.
-const ADMIN_KEY_STORAGE = 'burn_admin_key';
-
-export const getStoredAdminKey = (): string | null =>
-  typeof window === 'undefined' ? null : sessionStorage.getItem(ADMIN_KEY_STORAGE);
-export const storeAdminKey = (key: string) => sessionStorage.setItem(ADMIN_KEY_STORAGE, key);
-export const clearAdminKey  = () => sessionStorage.removeItem(ADMIN_KEY_STORAGE);
-
-export const adminHeaders = (): Record<string, string> => {
-  const key = getStoredAdminKey();
-  return key ? { 'x-admin-key': key } : {};
-};
-
+// Admin calls go through Next.js API routes (keeps ADMIN_API_KEY server-side)
 export const adminAction = async (action: 'close' | 'open') => {
-  const r = await fetch(`/api/admin/burn1/${action}`, { method: 'POST', headers: adminHeaders() });
+  const r = await fetch(`/api/admin/burn1/${action}`, { method: 'POST' });
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'Admin action failed');
-  return data;
-};
-
-export const adminBurn2Action = async (action: 'close' | 'open') => {
-  const r = await fetch(`/api/admin/burn2/${action}`, { method: 'POST', headers: adminHeaders() });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || 'Admin action failed');
-  return data;
-};
-
-export const startBurn1Timer = async (): Promise<{ timerEnd: string }> => {
-  const r = await fetch('/api/admin/timer/start', { method: 'POST', headers: adminHeaders() });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || 'Failed to start timer');
-  return data;
-};
-
-export const stopBurn1Timer = async () => {
-  const r = await fetch('/api/admin/timer/stop', { method: 'POST', headers: adminHeaders() });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || 'Failed to stop timer');
   return data;
 };
 
 export const setEventLive = async (live: boolean) => {
   const action = live ? 'go-live' : 'coming-soon';
-  const r = await fetch(`/api/admin/event/${action}`, { method: 'POST', headers: adminHeaders() });
+  const r = await fetch(`/api/admin/event/${action}`, { method: 'POST' });
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'Failed to update event status');
   return data;
@@ -127,7 +90,7 @@ export type SlideshowSaveResult = {
 export const saveSlideshow = async (urls: string[]): Promise<SlideshowSaveResult[]> => {
   const r = await fetch('/api/admin/slideshow', {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+    headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ urls }),
   });
   const data = await r.json();
@@ -135,17 +98,6 @@ export const saveSlideshow = async (urls: string[]): Promise<SlideshowSaveResult
   return data.results;
 };
 
-export const downloadCSV = async () => {
-  const r = await fetch('/api/admin/export', { headers: adminHeaders() });
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({}));
-    throw new Error(data.error || 'Export failed');
-  }
-  const blob = await r.blob();
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = 'burns.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+export const downloadCSV = () => {
+  window.location.href = '/api/admin/export';
 };

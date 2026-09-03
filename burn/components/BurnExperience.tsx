@@ -60,24 +60,16 @@ type Phase = 'idle' | 'pending' | 'confirming' | 'recording' | 'done' | 'error';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-// Type-safe filter for soldOutItemIds / claimedItemIds
-type CatalogItemId = 'archive-tag' | 'gilded-seal';
+// Type-safe filter for soldOutItemIds
+type SoldOutId = 'archive-tag' | 'gilded-seal';
 
-// Phase closed → SOLD OUT stamp
-function buildSoldOutIds(status: BurnStatus | null): readonly CatalogItemId[] {
-  const ids: CatalogItemId[] = [];
-  if (!status?.burn1Open) ids.push('archive-tag');
-  if (!status?.burn2Open) ids.push('gilded-seal');
-  return ids;
-}
-
-// Wallet already burned for it → CLAIMED EDITION stamp
-function buildClaimedIds(
+function buildSoldOutIds(
+  status:      BurnStatus | null,
   walletBurns: { burnedTier1: boolean; burnedTier2: boolean } | null,
-): readonly CatalogItemId[] {
-  const ids: CatalogItemId[] = [];
-  if (walletBurns?.burnedTier1) ids.push('archive-tag');
-  if (walletBurns?.burnedTier2) ids.push('gilded-seal');
+): readonly SoldOutId[] {
+  const ids: SoldOutId[] = [];
+  if (!status?.burn1Open)                            ids.push('archive-tag');
+  if (!status?.burn2Open || walletBurns?.burnedTier2) ids.push('gilded-seal');
   return ids;
 }
 
@@ -205,8 +197,7 @@ export function BurnExperience() {
 
   if (webgl === 'unavailable') return <WebGLError />;
 
-  const soldOutItemIds = buildSoldOutIds(status);
-  const claimedItemIds = buildClaimedIds(walletBurns);
+  const soldOutItemIds = buildSoldOutIds(status, walletBurns);
   const isProcessing   = phase === 'pending' || phase === 'confirming' || phase === 'recording';
 
   return (
@@ -217,14 +208,11 @@ export function BurnExperience() {
         walletLabel={address ? `${address.slice(0, 6)}\u2026${address.slice(-4)}` : undefined}
         availableBoxCount={balance !== undefined ? Number(balance) : 0}
         soldOutItemIds={soldOutItemIds}
-        claimedItemIds={claimedItemIds}
         showDevSoldOutSwitch={false}
         onConnectWallet={openConnectModal ?? (() => {})}
         onBurnRequested={handleBurnRequested}
         burn2Remaining={status ? 5 - status.burn2Count : 5}
         burn1Open={status?.burn1Open ?? true}
-        burn2Open={status?.burn2Open ?? false}
-        timerEnd={status?.timerEnd ?? null}
         eventLive={status?.eventLive ?? true}
         signedTxKey={txHash}
         slideshowItems={slideshow}
@@ -393,7 +381,7 @@ function ComingSoonOverlay() {
 
 function RoomLoader() {
   return (
-    <div className="fixed inset-0 bg-[#a9e2ec] flex items-center justify-center">
+    <div className="fixed inset-0 bg-[#aec9bf] flex items-center justify-center">
       <div className="w-8 h-8 border-2 border-[#17121f]/30 border-t-[#17121f] rounded-full animate-spin" />
     </div>
   );
@@ -401,7 +389,7 @@ function RoomLoader() {
 
 function WebGLError() {
   return (
-    <div className="fixed inset-0 bg-[#a9e2ec] flex items-center justify-center p-6">
+    <div className="fixed inset-0 bg-[#aec9bf] flex items-center justify-center p-6">
       <div className="max-w-sm w-full bg-[#d4dde0] border-4 border-[#17121f] p-6 shadow-[4px_4px_0_#17121f] text-center">
         <p className="font-bold text-[#17121f] text-lg mb-2">WebGL Unavailable</p>
         <p className="text-[#17121f]/70 text-sm mb-4">

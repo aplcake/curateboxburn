@@ -2,23 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const API = process.env.API_URL!;
+const API       = process.env.API_URL!;
+const ADMIN_KEY = process.env.ADMIN_API_KEY!;
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { action: string } }
 ) {
   const { action } = params;
   if (!['go-live', 'coming-soon'].includes(action))
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
 
-  const adminKey = req.headers.get('x-admin-key');
-  if (!adminKey)
-    return NextResponse.json({ error: 'Admin key required' }, { status: 401 });
-
   const r = await fetch(`${API}/admin/event/${action}`, {
     method:  'POST',
-    headers: { 'x-admin-key': adminKey },
+    headers: { 'x-admin-key': ADMIN_KEY },
   });
 
   const data = await r.json();
