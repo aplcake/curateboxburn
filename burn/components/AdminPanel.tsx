@@ -5,7 +5,7 @@ import { useAccount }           from 'wagmi';
 import { useConnectModal }      from '@rainbow-me/rainbowkit';
 import {
   adminAction, adminBurn2Action, downloadCSV, getStatus, setEventLive,
-  getSlideshow, saveSlideshow,
+  getSlideshow, saveSlideshow, togglePool,
   getStoredAdminKey, storeAdminKey, clearAdminKey, adminHeaders,
   type BurnStatus, type SlideshowSaveResult,
 } from '@/lib/api';
