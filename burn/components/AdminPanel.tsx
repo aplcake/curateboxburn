@@ -294,7 +294,7 @@ export function AdminPanel() {
       {/* FCFS Pool */}
       <div className="flex flex-col gap-2 border border-white/10 p-4">
         <p className="text-xs tracking-widest text-white/50 mb-1">
-          FCFS POOL — 15 SLOTS (SEND TOKEN TO MINTER WALLET)
+          FCFS POOL — 10 SLOTS (SEND TOKEN TO MINTER WALLET)
         </p>
         {status && (
           <p className="text-center font-mono text-lg">
