@@ -65,6 +65,13 @@ const ROOM_CENTER_Z = (ROOM_BACK_Z + ROOM_FRONT_Z) / 2
 const DEMO_WALLET_BOX_COUNT = 5
 const BURN_CATALOG_ITEMS = [
   {
+    id: 'pool-slot',
+    title: 'FCFS POOL',
+    boxCost: 1,
+    accent: '#1058a8',
+    icon: 'tag',
+  },
+  {
     id: 'archive-tag',
     title: '24 HOURS OE',
     boxCost: 1,
@@ -109,6 +116,10 @@ export type VacuumBurnRoomExperienceProps = {
   // plaque row both — instead of showing as sold out.
   burn2Open?: boolean
   timerEnd?: string | null
+  poolCount?: number
+  poolMax?: number
+  poolOpen?: boolean
+  poolBatchSent?: boolean
   // When false, the BURN button itself doesn't render — independent of any
   // DOM overlay, so the room is inert no matter what wraps it.
   eventLive?: boolean
@@ -123,11 +134,15 @@ export type VacuumBurnRoomExperienceProps = {
 }
 
 // Context so BurnCounterPlaque can read status without prop-drilling through ToonRoomShell
-const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean; burn2Open: boolean; timerEnd: string | null }>({
+const BurnStatusContext = React.createContext<{ burn2Remaining: number; burn1Open: boolean; burn2Open: boolean; timerEnd: string | null; poolCount: number; poolMax: number; poolOpen: boolean; poolBatchSent: boolean }>({
   burn2Remaining: 5,
   burn1Open: true,
   burn2Open: true,
   timerEnd: null,
+  poolCount: 0,
+  poolMax: 10,
+  poolOpen: false,
+  poolBatchSent: false,
 })
 const DEFAULT_BURN_CATALOG_ITEM_ID: BurnCatalogItemId = BURN_CATALOG_ITEMS[0].id
 function getBurnCatalogItem(itemId: BurnCatalogItemId) {
@@ -3105,7 +3120,7 @@ function useBurn1Countdown(timerEnd: string | null) {
 }
 
 function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
-  const { burn2Remaining, burn1Open, burn2Open, timerEnd } = React.useContext(BurnStatusContext)
+  const { burn2Remaining, burn1Open, burn2Open, timerEnd, poolCount, poolMax, poolOpen, poolBatchSent } = React.useContext(BurnStatusContext)
   const countdown = useBurn1Countdown(timerEnd)
   // Timer live → the plaque becomes a framed countdown painting for the
   // 24h open edition. Otherwise → burn status board (Burn 2 row only shows
@@ -3114,8 +3129,7 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
   const sealsLeft = Math.max(0, Math.min(5, burn2Remaining))
   // The board only shows the currently active phase. When nothing is live it
   // falls back to a single 24 HOURS OE row reading CLOSED.
-  const show24hRow = burn1Open || !burn2Open
-  const bothRows = show24hRow && burn2Open
+  const bothRows = burn2Open
 
   return (
     <group position={[ROOM_CENTER_X + 0.18, 1.9, wallFaceZ + 0.092]} renderOrder={20}>
@@ -3242,19 +3256,17 @@ function BurnCounterPlaque({ wallFaceZ }: { wallFaceZ: number }) {
               ))}
             </group>
           ) : null}
-          {show24hRow ? (
-            <group>
-              <DisplayText3D text="24 HOURS OE" position={[-0.92, bothRows ? -0.27 : -0.06, 0.13]} size={0.078} color="#2f7168" depth={0.032} />
+          <group>
+              <DisplayText3D text="FCFS POOL" position={[-0.92, burn2Open ? -0.27 : -0.06, 0.13]} size={0.082} color="#2f7168" depth={0.032} />
               <DisplayText3D
-                text={burn1Open ? 'OPEN' : 'CLOSED'}
-                position={[0.92, bothRows ? -0.282 : -0.072, 0.132]}
-                size={burn1Open ? 0.122 : 0.096}
-                color={burn1Open ? '#2f7168' : '#c43426'}
+                text={poolBatchSent ? 'COMPLETE' : `${poolCount} / ${poolMax}`}
+                position={[0.92, burn2Open ? -0.282 : -0.072, 0.132]}
+                size={0.096}
+                color={poolBatchSent ? '#d6b55b' : poolOpen ? '#2f7168' : '#6b6b6b'}
                 align="right"
                 depth={0.04}
               />
             </group>
-          ) : null}
         </group>
       )}
     </group>
@@ -8396,6 +8408,10 @@ export function VacuumBurnRoomExperience({
   burn1Open = true,
   burn2Open = true,
   timerEnd,
+  poolCount = 0,
+  poolMax = 10,
+  poolOpen = false,
+  poolBatchSent = false,
   eventLive = true,
   slideshowItems,
   signedTxKey,
@@ -8490,7 +8506,7 @@ export function VacuumBurnRoomExperience({
   }, [signedTxKey])
 
   return (
-    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open, burn2Open, timerEnd: timerEnd ?? null }}>
+    <BurnStatusContext.Provider value={{ burn2Remaining, burn1Open, burn2Open, timerEnd: timerEnd ?? null, poolCount, poolMax, poolOpen, poolBatchSent }}>
     <div
       style={{
         position: 'fixed',

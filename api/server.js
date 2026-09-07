@@ -164,12 +164,16 @@ async function scanPoolTransfers() {
   const lastBlock = getPoolLastBlock();
   if (currentBlock <= lastBlock) return;
 
+  // Cap scan range to 5000 blocks to stay under RPC limits
+  const MAX_RANGE = 5000n;
+  const toBlock = currentBlock - lastBlock > MAX_RANGE ? lastBlock + MAX_RANGE : currentBlock;
+
   let logs;
   try {
     logs = await publicClient.getLogs({
       address: TOKEN_CONTRACT, event: TRANSFER_SINGLE,
       args: { to: minterAddress },
-      fromBlock: lastBlock + 1n, toBlock: currentBlock,
+      fromBlock: lastBlock + 1n, toBlock,
     });
   } catch (err) { console.error('[pool] getLogs error:', err.message); return; }
 

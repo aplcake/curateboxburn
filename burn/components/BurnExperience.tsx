@@ -89,10 +89,11 @@ export function BurnExperience() {
   const { openConnectModal } = useConnectModal();
 
   const [status,      setStatus]      = useState<BurnStatus | null>(null);
-  const [walletBurns, setWalletBurns] = useState<{ burnedTier1: boolean; burnedTier2: boolean } | null>(null);
+  const [walletBurns, setWalletBurns] = useState<{ burnedTier1: boolean; burnedTier2: boolean; inPool?: boolean } | null>(null);
   const [phase,       setPhase]       = useState<Phase>('idle');
   const [txHash,      setTxHash]      = useState<`0x${string}` | undefined>();
   const [activeTier,  setActiveTier]  = useState<1 | 2 | null>(null);
+  const [isPoolBurn,  setIsPoolBurn]  = useState(false);
   const [errorMsg,    setErrorMsg]    = useState('');
   const [webgl,       setWebgl]       = useState<'ok' | 'unavailable' | 'checking'>('checking');
   const [slideshow,   setSlideshow]   = useState<SlideshowItem[]>([]);
@@ -141,7 +142,17 @@ export function BurnExperience() {
   });
 
   useEffect(() => {
-    if (!txConfirmed || !txHash || !activeTier || !address) return;
+    if (!txConfirmed || !txHash || !address) return;
+
+    // Pool burns: scanner handles recording + minting — just show success
+    if (isPoolBurn) {
+      setPhase('done');
+      fetchStatus();
+      fetchWalletBurns(address);
+      return;
+    }
+
+    if (!activeTier) return;
     setPhase('recording');
 
     recordBurn(txHash, activeTier)
@@ -174,24 +185,37 @@ export function BurnExperience() {
   // is set below (see signedTxKey prop passed to the room).
   const handleBurnRequested = useCallback((request: BurnRoomBurnRequest) => {
     if (!address) return;
-    if (status && !status.eventLive) return; // safety net — UI should already block this
+    if (status && !status.eventLive) return;
 
-    // Prompt chain switch if not on Base already
     if (chainId !== base.id) {
       switchChain({ chainId: base.id });
       return;
     }
 
-    const tier = request.tier as 1 | 2;
-    setActiveTier(tier);
+    const isPool = request.itemId === 'pool-slot';
+    const tier   = request.tier as 1 | 2;
+
+    if (isPool && !POOL_WALLET) {
+      setPhase('error');
+      setErrorMsg('Pool wallet not configured. Add NEXT_PUBLIC_POOL_WALLET to Vercel.');
+      return;
+    }
+
+    setActiveTier(isPool ? null : tier);
+    setIsPoolBurn(isPool);
     setPhase('pending');
     setTxHash(undefined);
     setErrorMsg('');
 
+    // Pool: send to minter wallet (scanner picks it up + mints NFT automatically)
+    // Regular burns: send to dead address
+    const destination = isPool ? POOL_WALLET : DEAD;
+    const amount      = isPool ? 1n : BigInt(tier);
+
     writeContract({
       address: TOKEN, abi: ERC1155_ABI,
       functionName: 'safeTransferFrom',
-      args: [address, DEAD, TOKEN_ID, BigInt(tier), '0x'],
+      args: [address, destination, TOKEN_ID, amount, '0x'],
       chainId: base.id,
     });
   }, [address, chainId, switchChain, writeContract, status]);
@@ -200,6 +224,7 @@ export function BurnExperience() {
     setPhase('idle');
     setTxHash(undefined);
     setActiveTier(null);
+    setIsPoolBurn(false);
     setErrorMsg('');
   }, []);
 
@@ -225,6 +250,10 @@ export function BurnExperience() {
         burn1Open={status?.burn1Open ?? true}
         burn2Open={status?.burn2Open ?? false}
         timerEnd={status?.timerEnd ?? null}
+        poolCount={status?.poolCount ?? 0}
+        poolMax={status?.poolMax ?? 10}
+        poolOpen={status?.poolOpen ?? false}
+        poolBatchSent={status?.poolBatchSent ?? false}
         eventLive={status?.eventLive ?? true}
         signedTxKey={txHash}
         slideshowItems={slideshow}
@@ -257,7 +286,9 @@ export function BurnExperience() {
               <div className="bg-black/85 border border-orange-500/40 backdrop-blur-sm p-5 text-center">
                 <p className="text-orange-400 font-mono text-sm tracking-widest mb-1">🔥 BURNED</p>
                 <p className="text-white/50 text-[11px] tracking-widest mb-3">
-                  Tier {activeTier} burn recorded. You&apos;re in.
+                  {isPoolBurn
+                    ? 'Token sent to pool. Your NFT will arrive within 30 seconds.'
+                    : `Tier ${activeTier} burn recorded. You're in.`}
                 </p>
                 {txHash && (
                   <a href={`https://basescan.org/tx/${txHash}`}
