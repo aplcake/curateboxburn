@@ -99,6 +99,30 @@ export const togglePool = async (action: 'start' | 'stop') => {
   return data;
 };
 
+export const setPoolCount = async (count: number) => {
+  const r = await fetch('/api/admin/pool/count', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+    body: JSON.stringify({ count }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Failed to update pool count');
+  return data as { success: true; poolCount: number; poolMax: number };
+};
+
+export type AirdropReward = 'pool' | 'burn1' | 'burn2';
+
+export const airdropReward = async (wallet: string, reward: AirdropReward) => {
+  const r = await fetch('/api/admin/airdrop', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+    body: JSON.stringify({ wallet, reward }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Airdrop failed');
+  return data as { success: true; wallet: string; reward: AirdropReward; txHash: string };
+};
+
 export const setEventLive = async (live: boolean) => {
   const action = live ? 'go-live' : 'coming-soon';
   const r = await fetch(`/api/admin/event/${action}`, { method: 'POST', headers: adminHeaders() });

@@ -3,6 +3,10 @@ const path = require('path');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'burns.db');
 const db = new Database(DB_PATH);
+const INITIAL_POOL_COUNT = Number.parseInt(process.env.INITIAL_POOL_COUNT || '2', 10);
+const SAFE_INITIAL_POOL_COUNT = Number.isInteger(INITIAL_POOL_COUNT)
+  ? Math.max(0, Math.min(INITIAL_POOL_COUNT, 10))
+  : 2;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS burns (
@@ -47,16 +51,22 @@ db.exec(`
   INSERT OR IGNORE INTO config (key, value) VALUES ('pool_last_block', '0');
 `);
 
+// This event already has two FCFS commitments. Only initialise a completely
+// empty pool, so deploys never overwrite a pool that has begun accepting users.
+const poolState = db.prepare("SELECT value FROM config WHERE key = 'pool_count'").get();
+const poolRows = db.prepare('SELECT COUNT(*) AS count FROM pool_burns').get();
+if (poolState?.value === '0' && poolRows.count === 0 && SAFE_INITIAL_POOL_COUNT > 0) {
+  db.prepare("UPDATE config SET value = ? WHERE key = 'pool_count'").run(String(SAFE_INITIAL_POOL_COUNT));
+  console.log(`[db] initialized pool with ${SAFE_INITIAL_POOL_COUNT} committed slots`);
+}
+
 const CONFIRMED_BURNS = [
   { wallet: '0x7ea0ccda3930abca0e6cb57f98e30ebcb708dd60', tier: 2, tx_hash: '0xadd5fb39a08cd4c009773f001ceabd91e65c15cd17599f1a4d78938202de6a68', amount: 2 },
   { wallet: '0x3c785af6a41490c24d6910bfa9baffabd1dd2f21', tier: 2, tx_hash: '0x571f88342d2884c13a128b6a7262d2a82b69390453e7d5143c6ebf6e22273d37', amount: 2 },
 ];
-// Hard guarantee: one tier-1 burn per wallet
-try {
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS one_burn1_per_wallet ON burns(wallet) WHERE tier = 1;');
-} catch (err) {
-  console.warn('[db] one_burn1_per_wallet index:', err.message);
-}
+// This event allows repeat burns. Drop the legacy one-burn-per-wallet index on
+// startup so existing Railway databases receive the policy change as well.
+db.exec('DROP INDEX IF EXISTS one_burn1_per_wallet;');
 
 const insertSeed = db.prepare('INSERT OR IGNORE INTO burns (wallet, tier, tx_hash, amount) VALUES (?, ?, ?, ?)');
 for (const b of CONFIRMED_BURNS) {
@@ -118,7 +128,6 @@ const stopBurn1Timer   = () => {
   setConfig.run('false', 'burn1_open');
   setConfig.run('', 'burn1_timer_end');
 };
-const hasWalletBurned1 = (w) => !!db.prepare("SELECT 1 FROM burns WHERE wallet=? AND tier=1").get(w.toLowerCase());
 const getAllBurns       = () => db.prepare('SELECT * FROM burns ORDER BY created_at ASC').all();
 const hasTx            = (h) => !!db.prepare('SELECT id FROM burns WHERE tx_hash=?').get(h.toLowerCase());
 
@@ -127,13 +136,15 @@ const hasPoolTx     = (h) => !!db.prepare('SELECT 1 FROM pool_burns WHERE tx_has
 const hasWalletPool = (w) => !!db.prepare("SELECT 1 FROM pool_burns WHERE wallet=? AND status='accepted'").get(w.toLowerCase());
 const getPoolBurns  = () => db.prepare('SELECT * FROM pool_burns ORDER BY created_at ASC').all();
 const recordPoolBurn = (wallet, txHash, status='accepted') => {
-  db.prepare('INSERT OR IGNORE INTO pool_burns (wallet,tx_hash,status) VALUES (?,?,?)').run(wallet.toLowerCase(), txHash.toLowerCase(), status);
-  if (status === 'accepted') {
+  const result = db.prepare('INSERT OR IGNORE INTO pool_burns (wallet,tx_hash,status) VALUES (?,?,?)')
+    .run(wallet.toLowerCase(), txHash.toLowerCase(), status);
+  if (status === 'accepted' && result.changes === 1) {
     const cur = parseInt(getConfig('pool_count') || '0');
     setConfig.run(String(cur+1), 'pool_count');
   }
 };
 const setPoolOpen      = (v) => setConfig.run(v ? 'true' : 'false', 'pool_open');
+const setPoolCount     = (count) => setConfig.run(String(count), 'pool_count');
 const setPoolBatchSent = ()  => setConfig.run('true', 'pool_batch_sent');
 const getPoolLastBlock = ()  => BigInt(getConfig('pool_last_block') || '0');
 const setPoolLastBlock = (n) => setConfig.run(String(n), 'pool_last_block');
@@ -149,8 +160,8 @@ const getSlideshowItems = () =>
 
 module.exports = {
   db, getBurnStatus, recordBurn, setBurn1Open, setBurn2Open, setEventLive,
-  startBurn1Timer, stopBurn1Timer, hasWalletBurned1, getAllBurns, hasTx,
+  startBurn1Timer, stopBurn1Timer, getAllBurns, hasTx,
   hasPoolTx, hasWalletPool, getPoolBurns, recordPoolBurn,
-  setPoolOpen, setPoolBatchSent, getPoolLastBlock, setPoolLastBlock,
+  setPoolOpen, setPoolCount, setPoolBatchSent, getPoolLastBlock, setPoolLastBlock,
   replaceSlideshowItems, getSlideshowItems,
 };

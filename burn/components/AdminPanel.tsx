@@ -5,7 +5,8 @@ import { useAccount }           from 'wagmi';
 import { useConnectModal }      from '@rainbow-me/rainbowkit';
 import {
   adminAction, adminBurn2Action, downloadCSV, getStatus, setEventLive,
-  getSlideshow, saveSlideshow, togglePool,
+  getSlideshow, saveSlideshow, togglePool, setPoolCount,
+  airdropReward as sendAirdropReward, type AirdropReward,
   getStoredAdminKey, storeAdminKey, clearAdminKey, adminHeaders,
   type BurnStatus, type SlideshowSaveResult,
 } from '@/lib/api';
@@ -45,11 +46,15 @@ export function AdminPanel() {
   const [liveToggling,    setLiveToggling]    = useState(false);
   const [timerRunning,    setTimerRunning]    = useState(false);
   const [poolToggling,    setPoolToggling]    = useState(false);
+  const [poolCountInput,  setPoolCountInput]  = useState('');
   const [slideshowText,   setSlideshowText]   = useState('');
   const [slideshowSaving, setSlideshowSaving] = useState(false);
   const [slideshowResults,setSlideshowResults]= useState<SlideshowSaveResult[] | null>(null);
   const [adminKey,        setAdminKey]        = useState<string | null>(null);
   const [keyInput,        setKeyInput]        = useState('');
+  const [airdropWallet,   setAirdropWallet]   = useState('');
+  const [airdropReward,   setAirdropReward]   = useState<AirdropReward>('pool');
+  const [airdropSending,  setAirdropSending]  = useState(false);
 
   const countdown = useCountdown(status?.timerEnd ?? null);
 
@@ -57,6 +62,9 @@ export function AdminPanel() {
 
   const refresh = async () => { try { setStatus(await getStatus()); } catch {} };
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    if (status) setPoolCountInput(String(status.poolCount));
+  }, [status?.poolCount]);
   useEffect(() => {
     // Re-poll status every 10s so the admin sees timer expiry without reloading
     const id = setInterval(refresh, 10_000);
@@ -156,6 +164,17 @@ export function AdminPanel() {
     finally { setPoolToggling(false); }
   };
 
+  const savePoolCount = async () => {
+    const count = Number(poolCountInput);
+    setPoolToggling(true); setMsg('');
+    try {
+      const result = await setPoolCount(count);
+      setMsg(`✓ FCFS pool set to ${result.poolCount}/${result.poolMax} committed — ${result.poolMax - result.poolCount} available`);
+      await refresh();
+    } catch (e: unknown) { setMsg((e as Error).message); }
+    finally { setPoolToggling(false); }
+  };
+
   const saveSlideshowList = async () => {
     setSlideshowSaving(true); setSlideshowResults(null); setMsg('');
     try {
@@ -191,6 +210,16 @@ export function AdminPanel() {
     setMsg('');
     try { await downloadCSV(); }
     catch (e: unknown) { setMsg((e as Error).message); }
+  };
+
+  const sendAirdrop = async () => {
+    setAirdropSending(true); setMsg('');
+    try {
+      const result = await sendAirdropReward(airdropWallet.trim(), airdropReward);
+      setMsg(`✓ ${result.reward.toUpperCase()} NFT sent — ${result.txHash.slice(0, 10)}…`);
+      setAirdropWallet('');
+    } catch (e: unknown) { setMsg((e as Error).message); }
+    finally { setAirdropSending(false); }
   };
 
   const timerActive = !!status?.timerEnd && status.burn1Open;
@@ -318,9 +347,62 @@ export function AdminPanel() {
             onClick={() => handlePool('stop')}
           >⏹ CLOSE POOL</button>
         </div>
-        <p className="text-[10px] text-white/30 text-center">
-          Scans every 30s. Accepted → Manifold NFT instant. Over 15 → auto-returned. Full → batch burn to dead.
+        <div className="flex gap-2 pt-1">
+          <input
+            type="number"
+            min="0"
+            max={status?.poolMax ?? 10}
+            step="1"
+            value={poolCountInput}
+            onChange={(e) => setPoolCountInput(e.target.value)}
+            aria-label="Committed FCFS pool slots"
+            className="w-24 bg-black/40 border border-white/10 text-white/80 text-xs font-mono p-2 focus:outline-none focus:border-white/30"
+          />
+          <button
+            className="flex-1 py-2 border border-white/20 text-white/70 text-xs tracking-widest hover:border-white/40 hover:text-white transition disabled:opacity-40"
+            disabled={poolToggling || !/^(?:[0-9]|10)$/.test(poolCountInput)}
+            onClick={savePoolCount}
+          >SET COMMITTED COUNT</button>
+        </div>
+        <p className="text-[10px] text-yellow-400/70 text-center">
+          Set this to the number already committed. For 4 burned, enter 4 to leave 6/10 available.
         </p>
+        <p className="text-[10px] text-white/30 text-center">
+          Scans every 30s. Accepted → Manifold NFT instant. Over 10 → auto-returned. Full → batch burn to dead.
+        </p>
+      </div>
+
+      {/* Manual recovery airdrop */}
+      <div className="flex flex-col gap-2 border border-[#d6b55b]/30 p-4">
+        <p className="text-xs tracking-widest text-[#d6b55b]">MANUAL NFT AIRDROP</p>
+        <p className="text-[10px] text-white/35">
+          Use this only to recover a participant whose automatic reward failed. It does not change burn records or FCFS slots.
+        </p>
+        <input
+          value={airdropWallet}
+          onChange={(e) => setAirdropWallet(e.target.value)}
+          placeholder="0x recipient wallet"
+          spellCheck={false}
+          className="w-full bg-black/40 border border-white/10 text-white/80 text-xs font-mono p-2.5 placeholder:text-white/20 focus:outline-none focus:border-[#d6b55b]/60"
+        />
+        <div className="flex gap-2">
+          <select
+            value={airdropReward}
+            onChange={(e) => setAirdropReward(e.target.value as AirdropReward)}
+            className="flex-1 bg-black/40 border border-white/10 text-white/80 text-xs font-mono p-2 focus:outline-none"
+          >
+            <option value="pool">FCFS POOL NFT</option>
+            <option value="burn1">BURN ×1 NFT</option>
+            <option value="burn2">BURN ×2 NFT</option>
+          </select>
+          <button
+            className="flex-1 py-2 border border-[#d6b55b]/60 text-[#d6b55b] text-xs tracking-widest hover:bg-[#d6b55b]/10 transition disabled:opacity-40"
+            disabled={airdropSending || !/^0x[a-fA-F0-9]{40}$/.test(airdropWallet.trim())}
+            onClick={sendAirdrop}
+          >
+            {airdropSending ? 'SENDING…' : 'SEND NFT'}
+          </button>
+        </div>
       </div>
 
       {/* Manual burn 1 toggle (fallback) */}

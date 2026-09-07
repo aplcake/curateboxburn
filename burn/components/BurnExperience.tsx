@@ -8,7 +8,7 @@ import {
   useWaitForTransactionReceipt, useSwitchChain, useDisconnect,
 } from 'wagmi';
 import { base }              from 'wagmi/chains';
-import { getStatus, recordBurn, getWalletBurns, getSlideshow, type BurnStatus, type SlideshowItem } from '@/lib/api';
+import { getStatus, recordBurn, getSlideshow, type BurnStatus, type SlideshowItem } from '@/lib/api';
 import type { BurnRoomBurnRequest }                               from '@/src/burn-room';
 
 // ── 3D room — client-only, Three.js needs browser ────────────────────────
@@ -32,7 +32,7 @@ function checkWebGL(): 'ok' | 'unavailable' {
 // ── Contract config ───────────────────────────────────────────────────────
 const TOKEN       = '0x04619852f38ebec22bb94ef36b99351db9900194' as const;
 const POOL_WALLET = (process.env.NEXT_PUBLIC_POOL_WALLET || '') as `0x${string}`;
-const TOKEN_ID = BigInt(3);
+const TOKEN_ID = BigInt(process.env.NEXT_PUBLIC_BURN_TOKEN_ID || '3');
 const DEAD     = '0x000000000000000000000000000000000000dEaD' as const;
 
 const ERC1155_ABI = [
@@ -72,16 +72,6 @@ function buildSoldOutIds(status: BurnStatus | null): readonly CatalogItemId[] {
   return ids;
 }
 
-// Wallet already burned for it → CLAIMED EDITION stamp
-function buildClaimedIds(
-  walletBurns: { burnedTier1: boolean; burnedTier2: boolean } | null,
-): readonly CatalogItemId[] {
-  const ids: CatalogItemId[] = [];
-  if (walletBurns?.burnedTier1) ids.push('archive-tag');
-  if (walletBurns?.burnedTier2) ids.push('gilded-seal');
-  return ids;
-}
-
 // ── Component ─────────────────────────────────────────────────────────────
 export function BurnExperience() {
   const { address, chainId } = useAccount();
@@ -90,7 +80,6 @@ export function BurnExperience() {
   const { openConnectModal } = useConnectModal();
 
   const [status,      setStatus]      = useState<BurnStatus | null>(null);
-  const [walletBurns, setWalletBurns] = useState<{ burnedTier1: boolean; burnedTier2: boolean; inPool?: boolean } | null>(null);
   const [phase,       setPhase]       = useState<Phase>('idle');
   const [txHash,      setTxHash]      = useState<`0x${string}` | undefined>();
   const [activeTier,  setActiveTier]  = useState<1 | 2 | null>(null);
@@ -113,20 +102,11 @@ export function BurnExperience() {
     try { setStatus(await getStatus()); } catch {}
   }, []);
 
-  const fetchWalletBurns = useCallback(async (addr: string) => {
-    try { setWalletBurns(await getWalletBurns(addr)); } catch {}
-  }, []);
-
   useEffect(() => {
     fetchStatus();
     const id = setInterval(fetchStatus, 15_000);
     return () => clearInterval(id);
   }, [fetchStatus]);
-
-  useEffect(() => {
-    if (address) fetchWalletBurns(address);
-    else setWalletBurns(null);
-  }, [address, fetchWalletBurns]);
 
   // Write contract
   const { writeContract } = useWriteContract({
@@ -149,7 +129,6 @@ export function BurnExperience() {
     if (isPoolBurn) {
       setPhase('done');
       fetchStatus();
-      fetchWalletBurns(address);
       return;
     }
 
@@ -160,7 +139,6 @@ export function BurnExperience() {
       .then(() => {
         setPhase('done');
         fetchStatus();
-        fetchWalletBurns(address);
       })
       .catch((err: Error) => {
         setPhase('error');
@@ -232,7 +210,9 @@ export function BurnExperience() {
   if (webgl === 'unavailable') return <WebGLError />;
 
   const soldOutItemIds = buildSoldOutIds(status);
-  const claimedItemIds = buildClaimedIds(walletBurns);
+  // Repeat burns are permitted; availability is controlled only by each
+  // event's global open/slot status, never by the connected wallet.
+  const claimedItemIds: readonly CatalogItemId[] = [];
   const isProcessing   = phase === 'pending' || phase === 'confirming' || phase === 'recording';
 
   return (
