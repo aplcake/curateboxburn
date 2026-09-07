@@ -30,7 +30,8 @@ function checkWebGL(): 'ok' | 'unavailable' {
 }
 
 // ── Contract config ───────────────────────────────────────────────────────
-const TOKEN    = '0x04619852f38ebec22bb94ef36b99351db9900194' as const;
+const TOKEN       = '0x04619852f38ebec22bb94ef36b99351db9900194' as const;
+const POOL_WALLET = (process.env.NEXT_PUBLIC_POOL_WALLET || '') as `0x${string}`;
 const TOKEN_ID = BigInt(3);
 const DEAD     = '0x000000000000000000000000000000000000dEaD' as const;
 
