@@ -5,7 +5,7 @@ const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
 const {
   db, getBurnStatus, recordBurn, setBurn1Open, setBurn2Open, setEventLive,
-  startBurn1Timer, stopBurn1Timer, hasWalletBurned1, getAllBurns, hasTx,
+  startBurn1Timer, stopBurn1Timer, getAllBurns, hasTx,
   hasPoolTx, hasWalletPool, getPoolBurns, recordPoolBurn,
   setPoolOpen, setPoolCount, setPoolBatchSent, getPoolLastBlock, setPoolLastBlock,
   replaceSlideshowItems, getSlideshowItems,
@@ -31,7 +31,7 @@ app.use(cors({
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const TOKEN_CONTRACT  = '0x04619852f38ebec22bb94ef36b99351db9900194';
-const TOKEN_ID        = BigInt(3);
+const TOKEN_ID        = BigInt(process.env.BURN_TOKEN_ID || '3');
 const DEAD_ADDRESS    = '0x000000000000000000000000000000000000dead';
 const MAX_BURN2       = 5;
 const POOL_MAX        = 10;
@@ -174,6 +174,19 @@ async function sendBatchToDead(count) {
   } catch (err) { console.error('[pool] batch burn failed:', err.message); }
 }
 
+async function mintPoolReward(wallet, txHash) {
+  try {
+    const mintHash = await mintManifoldNFT(wallet, 'pool');
+    if (!mintHash) {
+      console.error(`[pool] reward mint was skipped for ${wallet} (${txHash}); check MINTER_PRIVATE_KEY and POOL/BURN1_MANIFOLD_* settings`);
+      return;
+    }
+    console.log(`[pool] reward mint submitted for ${wallet} — tx ${mintHash}`);
+  } catch (err) {
+    console.error(`[pool] reward mint failed for ${wallet} (${txHash}):`, err.message);
+  }
+}
+
 async function scanPoolTransfers() {
   const status = getBurnStatus();
   if (!status.poolOpen || status.poolBatchSent) return;
@@ -220,25 +233,31 @@ async function scanPoolTransfers() {
     if (sender === minterAddress) continue;
     if (hasPoolTx(txHash)) continue;
 
+    // Pool entries are exactly one chest. A direct transfer of more than one
+    // token is returned in full instead of consuming a single FCFS slot.
+    if (amount !== 1) {
+      console.log(`[pool] invalid amount ${amount}, returning to ${sender}`);
+      recordPoolBurn(sender, txHash, 'invalid_amount');
+      returnToken(sender, amount).catch(() => {});
+      continue;
+    }
+
     const fresh = getBurnStatus();
     const poolFull  = fresh.poolCount >= POOL_MAX;
-    const alreadyIn = hasWalletPool(sender);
 
-    if (!fresh.poolOpen || poolFull || alreadyIn) {
-      const reason = !fresh.poolOpen ? 'pool_closed' : alreadyIn ? 'already_in_pool' : 'pool_full';
+    if (!fresh.poolOpen || poolFull) {
+      const reason = !fresh.poolOpen ? 'pool_closed' : 'pool_full';
       console.log(`[pool] ${reason}, returning to ${sender}`);
       recordPoolBurn(sender, txHash, reason);
       returnToken(sender, amount).catch(() => {});
       if (DISCORD_WEBHOOK) {
-        const msg = alreadyIn
-          ? `↩️ **POOL RETURN** — already in pool, returned to \`${sender.slice(0,6)}…${sender.slice(-4)}\``
-          : `↩️ **POOL FULL** — late entry returned to \`${sender.slice(0,6)}…${sender.slice(-4)}\``;
+        const msg = `↩️ **POOL ${reason === 'pool_full' ? 'FULL' : 'CLOSED'}** — returned to \`${sender.slice(0,6)}…${sender.slice(-4)}\``;
         fetch(DISCORD_WEBHOOK, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content:msg}) }).catch(() => {});
       }
     } else {
       recordPoolBurn(sender, txHash, 'accepted');
       console.log(`[pool] accepted ${sender} (${fresh.poolCount + 1}/${POOL_MAX})`);
-      mintManifoldNFT(sender, 'pool').catch(() => {});
+      mintPoolReward(sender, txHash).catch(() => {});
       if (DISCORD_WEBHOOK) {
         fetch(DISCORD_WEBHOOK, { method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ content: `🎟️ **POOL SLOT ${fresh.poolCount + 1}/${POOL_MAX}** — \`${sender.slice(0,6)}…${sender.slice(-4)}\`` }),
@@ -422,15 +441,9 @@ app.post('/burns', async (req, res) => {
   if (!verified)
     return res.status(400).json({ error: 'On-chain verification failed' });
 
-  // One burn ×1 per wallet — open edition hard limit
-  if (tier === 1 && hasWalletBurned1(verified.wallet))
-    return res.status(400).json({ error: 'This wallet has already burned ×1 (one per wallet)' });
-
   try {
     recordBurn(verified.wallet, tier, txHash, verified.amount);
   } catch (err) {
-    if (String(err.message).includes('UNIQUE'))
-      return res.status(400).json({ error: 'This wallet has already burned ×1 (one per wallet)' });
     console.error('recordBurn error:', err.message);
     return res.status(500).json({ error: 'Failed to record burn — contact admin with your tx hash' });
   }

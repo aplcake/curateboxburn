@@ -64,12 +64,9 @@ const CONFIRMED_BURNS = [
   { wallet: '0x7ea0ccda3930abca0e6cb57f98e30ebcb708dd60', tier: 2, tx_hash: '0xadd5fb39a08cd4c009773f001ceabd91e65c15cd17599f1a4d78938202de6a68', amount: 2 },
   { wallet: '0x3c785af6a41490c24d6910bfa9baffabd1dd2f21', tier: 2, tx_hash: '0x571f88342d2884c13a128b6a7262d2a82b69390453e7d5143c6ebf6e22273d37', amount: 2 },
 ];
-// Hard guarantee: one tier-1 burn per wallet
-try {
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS one_burn1_per_wallet ON burns(wallet) WHERE tier = 1;');
-} catch (err) {
-  console.warn('[db] one_burn1_per_wallet index:', err.message);
-}
+// This event allows repeat burns. Drop the legacy one-burn-per-wallet index on
+// startup so existing Railway databases receive the policy change as well.
+db.exec('DROP INDEX IF EXISTS one_burn1_per_wallet;');
 
 const insertSeed = db.prepare('INSERT OR IGNORE INTO burns (wallet, tier, tx_hash, amount) VALUES (?, ?, ?, ?)');
 for (const b of CONFIRMED_BURNS) {
@@ -131,7 +128,6 @@ const stopBurn1Timer   = () => {
   setConfig.run('false', 'burn1_open');
   setConfig.run('', 'burn1_timer_end');
 };
-const hasWalletBurned1 = (w) => !!db.prepare("SELECT 1 FROM burns WHERE wallet=? AND tier=1").get(w.toLowerCase());
 const getAllBurns       = () => db.prepare('SELECT * FROM burns ORDER BY created_at ASC').all();
 const hasTx            = (h) => !!db.prepare('SELECT id FROM burns WHERE tx_hash=?').get(h.toLowerCase());
 
@@ -164,7 +160,7 @@ const getSlideshowItems = () =>
 
 module.exports = {
   db, getBurnStatus, recordBurn, setBurn1Open, setBurn2Open, setEventLive,
-  startBurn1Timer, stopBurn1Timer, hasWalletBurned1, getAllBurns, hasTx,
+  startBurn1Timer, stopBurn1Timer, getAllBurns, hasTx,
   hasPoolTx, hasWalletPool, getPoolBurns, recordPoolBurn,
   setPoolOpen, setPoolCount, setPoolBatchSent, getPoolLastBlock, setPoolLastBlock,
   replaceSlideshowItems, getSlideshowItems,

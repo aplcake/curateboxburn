@@ -7,7 +7,7 @@ import {
   useWaitForTransactionReceipt, useSwitchChain,
 } from 'wagmi';
 import { base }        from 'wagmi/chains';
-import { getStatus, recordBurn, getWalletBurns, type BurnStatus, type WalletBurns } from '@/lib/api';
+import { getStatus, recordBurn, type BurnStatus } from '@/lib/api';
 
 const TOKEN    = '0x04619852f38ebec22bb94ef36b99351db9900194' as const;
 const TOKEN_ID = BigInt(3);
@@ -39,7 +39,6 @@ export function BurnInterface() {
   const { switchChain }      = useSwitchChain();
 
   const [status,      setStatus]      = useState<BurnStatus | null>(null);
-  const [walletBurns, setWalletBurns] = useState<WalletBurns | null>(null);
   const [phase,       setPhase]       = useState<Phase>('idle');
   const [txHash,      setTxHash]      = useState<`0x${string}` | undefined>();
   const [activeTier,  setActiveTier]  = useState<1 | 2 | null>(null);
@@ -58,21 +57,11 @@ export function BurnInterface() {
     try { setStatus(await getStatus()); } catch {}
   };
 
-  const fetchWalletBurns = async (addr: string) => {
-    try { setWalletBurns(await getWalletBurns(addr)); } catch {}
-  };
-
   useEffect(() => {
     fetchStatus();
     const id = setInterval(fetchStatus, 15_000);
     return () => clearInterval(id);
   }, []);
-
-  // Fetch wallet-specific burn history whenever address changes
-  useEffect(() => {
-    if (address) fetchWalletBurns(address);
-    else setWalletBurns(null);
-  }, [address]);
 
   const { writeContract, isPending: isWalletPending } = useWriteContract({
     mutation: {
@@ -97,7 +86,6 @@ export function BurnInterface() {
         setMessage('');
         fetchStatus();
         // Refresh wallet burn state so button hides immediately
-        if (address) fetchWalletBurns(address);
       })
       .catch((err) => {
         setPhase('error');
@@ -133,9 +121,7 @@ export function BurnInterface() {
   const burn2Avail   = !!status?.burn2Open;
   const burn1Avail   = !!status?.burn1Open;
 
-  // Per-wallet: hide burn ×2 if this wallet already burned ×2
-  const walletUsedBurn2 = walletBurns?.burnedTier2 === true;
-  const showBurn2       = !walletUsedBurn2 && burn2Avail;
+  const showBurn2 = burn2Avail;
 
   const isProcessing = ['pending','confirming','recording'].includes(phase);
 
@@ -170,16 +156,13 @@ export function BurnInterface() {
       {address && (
         <p className="text-white/40 text-xs tracking-widest">
           YOUR BALANCE: <span className="text-white">{bal}</span> TOKEN{bal !== 1 ? 'S' : ''}
-          {walletUsedBurn2 && (
-            <span className="ml-3 text-white/25">(×2 already burned)</span>
-          )}
         </p>
       )}
 
       {phase === 'idle' && (
         <div className="flex flex-col gap-4 w-full">
 
-          {/* Burn 2 — hidden if wallet already used it */}
+          {/* Burn 2 — available until the global slot limit is reached */}
           {showBurn2 && (
             <div className="flex flex-col gap-2">
               <button
@@ -196,17 +179,10 @@ export function BurnInterface() {
           )}
 
           {/* Burn 2 closed globally */}
-          {!burn2Avail && !walletUsedBurn2 && (
+          {!burn2Avail && (
             <div className="flex flex-col gap-2">
               <button className="btn-burn-2 w-full" disabled>🔥 BURN ×2</button>
               <p className="text-center text-xs text-white/30 tracking-widest">CLOSED — ALL 5 SLOTS FILLED</p>
-            </div>
-          )}
-
-          {/* Burn 2 — wallet already used theirs */}
-          {walletUsedBurn2 && (
-            <div className="py-4 border border-white/5 text-center text-xs text-white/20 tracking-widest">
-              ✓ YOU HAVE ALREADY BURNED ×2
             </div>
           )}
 
