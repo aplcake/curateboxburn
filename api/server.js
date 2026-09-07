@@ -5,8 +5,10 @@ const { privateKeyToAccount } = require('viem/accounts');
 const { base, mainnet } = require('viem/chains');
 const {
   db, getBurnStatus, recordBurn, setBurn1Open, setBurn2Open, setEventLive,
-  startBurn1Timer, stopBurn1Timer, hasWalletBurned1,
-  getAllBurns, hasTx, replaceSlideshowItems, getSlideshowItems,
+  startBurn1Timer, stopBurn1Timer, hasWalletBurned1, getAllBurns, hasTx,
+  hasPoolTx, hasWalletPool, getPoolBurns, recordPoolBurn,
+  setPoolOpen, setPoolBatchSent, getPoolLastBlock, setPoolLastBlock,
+  replaceSlideshowItems, getSlideshowItems,
 } = require('./db');
 
 const app = express();
