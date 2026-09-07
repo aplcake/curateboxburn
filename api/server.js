@@ -7,7 +7,7 @@ const {
   db, getBurnStatus, recordBurn, setBurn1Open, setBurn2Open, setEventLive,
   startBurn1Timer, stopBurn1Timer, hasWalletBurned1, getAllBurns, hasTx,
   hasPoolTx, hasWalletPool, getPoolBurns, recordPoolBurn,
-  setPoolOpen, setPoolBatchSent, getPoolLastBlock, setPoolLastBlock,
+  setPoolOpen, setPoolCount, setPoolBatchSent, getPoolLastBlock, setPoolLastBlock,
   replaceSlideshowItems, getSlideshowItems,
 } = require('./db');
 
@@ -34,6 +34,7 @@ const TOKEN_CONTRACT  = '0x04619852f38ebec22bb94ef36b99351db9900194';
 const TOKEN_ID        = BigInt(3);
 const DEAD_ADDRESS    = '0x000000000000000000000000000000000000dead';
 const MAX_BURN2       = 5;
+const POOL_MAX        = 10;
 const ADMIN_KEY       = process.env.ADMIN_API_KEY;
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK_URL;
 
@@ -46,6 +47,11 @@ const MANIFOLD_T2_TOKEN_ID = BigInt(process.env.BURN2_MANIFOLD_TOKEN_ID || '0');
 // BURN ×1 (open edition, 24h timer)
 const MANIFOLD_T1_CONTRACT = process.env.BURN1_MANIFOLD_CONTRACT || null;
 const MANIFOLD_T1_TOKEN_ID = BigInt(process.env.BURN1_MANIFOLD_TOKEN_ID || '0');
+
+// Pool rewards use the open-edition reward by default, but can be configured
+// separately when the pool has its own Manifold edition.
+const POOL_MANIFOLD_CONTRACT = process.env.POOL_MANIFOLD_CONTRACT || MANIFOLD_T1_CONTRACT;
+const POOL_MANIFOLD_TOKEN_ID = BigInt(process.env.POOL_MANIFOLD_TOKEN_ID || MANIFOLD_T1_TOKEN_ID);
 
 const MANIFOLD_CHAIN = process.env.MANIFOLD_CONTRACT_CHAIN === 'mainnet' ? mainnet : base;
 const MINTER_KEY     = process.env.MINTER_PRIVATE_KEY || null;
@@ -61,6 +67,18 @@ const MANIFOLD_ABI = [
     outputs: [],
   },
 ];
+
+const ERC1155_TRANSFER_ABI = [{
+  name: 'safeTransferFrom', type: 'function', stateMutability: 'nonpayable',
+  inputs: [
+    { name: 'from', type: 'address' },
+    { name: 'to', type: 'address' },
+    { name: 'id', type: 'uint256' },
+    { name: 'amount', type: 'uint256' },
+    { name: 'data', type: 'bytes' },
+  ],
+  outputs: [],
+}];
 
 let minterClient = null;
 function getMinterClient() {
@@ -85,8 +103,12 @@ const mintManifoldNFT = async (toAddress, tier) => {
   }
 
   // Route by tier
-  const contract = tier === 1 ? MANIFOLD_T1_CONTRACT : MANIFOLD_T2_CONTRACT;
-  const tokenId  = tier === 1 ? MANIFOLD_T1_TOKEN_ID : MANIFOLD_T2_TOKEN_ID;
+  const contract = tier === 'pool'
+    ? POOL_MANIFOLD_CONTRACT
+    : tier === 1 ? MANIFOLD_T1_CONTRACT : MANIFOLD_T2_CONTRACT;
+  const tokenId = tier === 'pool'
+    ? POOL_MANIFOLD_TOKEN_ID
+    : tier === 1 ? MANIFOLD_T1_TOKEN_ID : MANIFOLD_T2_TOKEN_ID;
 
   if (!contract) {
     console.log(`[manifold] skipped tier ${tier} — contract not configured`);
@@ -94,7 +116,7 @@ const mintManifoldNFT = async (toAddress, tier) => {
   }
   if (tokenId === 0n) {
     // ⚠️  MANIFOLD_TIER1_TOKEN_ID not set in Railway yet — mint will be skipped
-    console.warn(`[manifold] ⚠️  token ID not set for tier ${tier} — set BURN1/BURN2/POOL_MANIFOLD_TOKEN_ID in Railway.`);
+    console.warn(`[manifold] token ID not set for ${tier} — set the matching BURN1, BURN2, or POOL Manifold token ID in Railway.`);
     return;
   }
 
@@ -161,7 +183,14 @@ async function scanPoolTransfers() {
 
   let currentBlock;
   try { currentBlock = await publicClient.getBlockNumber(); } catch { return; }
-  const lastBlock = getPoolLastBlock();
+  let lastBlock = getPoolLastBlock();
+  // A previously deployed version did not initialise this cursor. Do a
+  // bounded recovery scan instead of attempting to scan Base from block zero.
+  if (lastBlock === 0n) {
+    const RECOVERY_BLOCKS = 5000n;
+    lastBlock = currentBlock > RECOVERY_BLOCKS ? currentBlock - RECOVERY_BLOCKS : 0n;
+    console.warn(`[pool] scanner cursor was unset; recovering transfers from block ${lastBlock}`);
+  }
   if (currentBlock <= lastBlock) return;
 
   // Cap scan range to 5000 blocks to stay under RPC limits
@@ -177,7 +206,9 @@ async function scanPoolTransfers() {
     });
   } catch (err) { console.error('[pool] getLogs error:', err.message); return; }
 
-  setPoolLastBlock(currentBlock);
+  // Advance only through the range that was actually queried. Advancing to
+  // currentBlock here drops transfers whenever RPC range limiting is active.
+  setPoolLastBlock(toBlock);
 
   const relevant = logs.filter(l => l.args.id === TOKEN_ID);
   if (relevant.length === 0) return;
@@ -367,6 +398,7 @@ app.get('/burns/wallet/:address', (req, res) => {
   res.json({
     burnedTier1: burns.some(b => b.tier === 1),
     burnedTier2: burns.some(b => b.tier === 2),
+    inPool: hasWalletPool(address),
   });
 });
 
@@ -440,13 +472,31 @@ app.post('/admin/timer/stop', requireAdmin, (_req, res) => {
   res.json({ success: true, burn1Open: false, timerEnd: null });
 });
 
-app.post('/admin/pool/start', requireAdmin, (_req,res) => {
-  setPoolOpen(true); startPoolScanner();
-  res.json({ success:true, poolOpen:true });
+app.post('/admin/pool/start', requireAdmin, async (_req, res) => {
+  // Begin at the current block so opening a pool never unexpectedly processes
+  // old deposits. The scanner then handles every subsequent block.
+  try {
+    const currentBlock = await publicClient.getBlockNumber();
+    setPoolLastBlock(currentBlock);
+  } catch (err) {
+    console.error('[pool] could not initialise scanner cursor:', err.message);
+    return res.status(503).json({ error: 'Base RPC is unavailable; pool was not opened' });
+  }
+  setPoolOpen(true);
+  startPoolScanner();
+  res.json({ success:true, poolOpen:true, poolMax: POOL_MAX });
 });
 app.post('/admin/pool/stop', requireAdmin, (_req,res) => {
   setPoolOpen(false); stopPoolScanner();
   res.json({ success:true, poolOpen:false });
+});
+app.post('/admin/pool/count', requireAdmin, (req, res) => {
+  const { count } = req.body || {};
+  if (!Number.isInteger(count) || count < 0 || count > POOL_MAX)
+    return res.status(400).json({ error: `count must be a whole number from 0 to ${POOL_MAX}` });
+  setPoolCount(count);
+  console.log(`[pool] admin set committed slot count to ${count}/${POOL_MAX}`);
+  res.json({ success: true, poolCount: count, poolMax: POOL_MAX });
 });
 app.get('/admin/pool/burns', requireAdmin, (_req,res) => res.json(getPoolBurns()));
 
@@ -480,6 +530,28 @@ app.post('/admin/remint', requireAdmin, async (req, res) => {
     }
   }
   res.json({ success: true, results });
+});
+
+// Manual recovery tool for a valid participant whose automatic mint failed.
+// It intentionally does not create a burn record or change pool capacity.
+app.post('/admin/airdrop', requireAdmin, async (req, res) => {
+  const { wallet, reward = 'pool' } = req.body || {};
+  if (typeof wallet !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(wallet))
+    return res.status(400).json({ error: 'wallet must be a valid 0x address' });
+  if (!['pool', 'burn1', 'burn2'].includes(reward))
+    return res.status(400).json({ error: 'reward must be pool, burn1, or burn2' });
+
+  const tier = reward === 'pool' ? 'pool' : reward === 'burn1' ? 1 : 2;
+  try {
+    const txHash = await mintManifoldNFT(wallet, tier);
+    if (!txHash)
+      return res.status(400).json({ error: 'Mint was not sent; configure the minter key and selected Manifold contract/token ID' });
+    console.log(`[airdrop] ${reward} reward sent to ${wallet} — tx ${txHash}`);
+    res.json({ success: true, wallet: wallet.toLowerCase(), reward, txHash });
+  } catch (err) {
+    console.error('[airdrop] failed:', err.message);
+    res.status(500).json({ error: `Airdrop failed: ${err.message}` });
+  }
 });
 
 // Mint without a burn — verifies the minter wallet can mint on the real
